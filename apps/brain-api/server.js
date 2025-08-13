@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import bodyParser from 'body-parser';
+import docsRoutes from './docs.js';
 
 import googleRoutes from './google.js';
 import batteryRoutes from './battery.js';
@@ -13,7 +14,7 @@ app.use(morgan('dev'));
 app.use(bodyParser.json({ limit: '2mb' }));
 
 app.get('/health', (req, res) => res.json({ ok: true }));
-
+app.use('/v1/google/docs', docsRoutes);
 app.use('/v1/google', googleRoutes);
 app.use('/v1/battery', batteryRoutes);
 
