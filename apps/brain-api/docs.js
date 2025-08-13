@@ -1,44 +1,36 @@
-import express from 'express';
-import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { google } from 'googleapis';
+import express from 'express';
 
 const router = express.Router();
 
-// Resolve __dirname since we’re using ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ===== CONFIG =====
+const tokensPath = path.join('/home/ubuntu/omneuro/apps/brain-api', 'tokens.json');
 
-// Path to OAuth token file (created during the OAuth process)
-const TOKEN_PATH = path.join(__dirname, 'tokens.json');
+// These must match your OAuth client
+const CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+const REDIRECT_URI = process.env.GOOGLE_OAUTH_REDIRECT || 'http://localhost:8081/v1/google/oauth2/callback';
 
-// Helper to get an authenticated OAuth2 client from saved tokens
-async function getOAuthClient() {
-  if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
-    throw new Error('OAuth CLIENT_ID / CLIENT_SECRET not set in environment variables.');
-  }
-  if (!fs.existsSync(TOKEN_PATH)) {
-    throw new Error(`OAuth token file not found at ${TOKEN_PATH}. Run the OAuth flow first.`);
-  }
-
-  const tokens = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
-
-  const oAuth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_OAUTH_CLIENT_ID,
-    process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-    process.env.GOOGLE_OAUTH_REDIRECT
-  );
-  oAuth2Client.setCredentials(tokens);
-  return oAuth2Client;
+// Load OAuth tokens from file
+if (!fs.existsSync(tokensPath)) {
+  throw new Error(`OAuth tokens file not found at ${tokensPath}`);
 }
+const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
 
-// Test route
+// Create OAuth2 client and set credentials
+const oAuth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+oAuth2Client.setCredentials(tokens);
+
+// ===== ROUTES =====
+
+// Ping
 router.get('/ping', (req, res) => {
-  res.json({ ok: true, feature: 'google-docs', auth: 'oauth-user' });
+  res.json({ ok: true, feature: 'google-docs' });
 });
 
-// Create a new Google Doc in the user's Drive
+// Create a new Google Doc
 router.post('/create', async (req, res) => {
   try {
     const { title, content, parentId } = req.body;
@@ -46,23 +38,24 @@ router.post('/create', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing title or content' });
     }
 
-    const auth = await getOAuthClient();
-    const docs = google.docs({ version: 'v1', auth });
-    const drive = google.drive({ version: 'v3', auth });
+    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
 
-    // Step 1: Create empty doc
+    // Step 1: Create the empty doc
+    const fileMetadata = {
+      name: title,
+      mimeType: 'application/vnd.google-apps.document',
+      ...(parentId ? { parents: [parentId] } : {})
+    };
+
     const createRes = await drive.files.create({
-      requestBody: {
-        name: title,
-        mimeType: 'application/vnd.google-apps.document',
-        ...(parentId ? { parents: [parentId] } : {})
-      },
+      resource: fileMetadata,
       fields: 'id'
     });
 
     const docId = createRes.data.id;
 
-    // Step 2: Insert content
+    // Step 2: Write content into the doc
+    const docs = google.docs({ version: 'v1', auth: oAuth2Client });
     await docs.documents.batchUpdate({
       documentId: docId,
       requestBody: {
@@ -77,10 +70,10 @@ router.post('/create', async (req, res) => {
       }
     });
 
-    res.json({ ok: true, docId, url: `https://docs.google.com/document/d/${docId}/edit` });
+    res.json({ ok: true, documentId: docId });
   } catch (err) {
-    console.error('Error creating doc:', err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error('Error creating Google Doc:', err.response?.data || err.message || err);
+    res.status(500).json({ ok: false, error: err.message || 'Unknown error' });
   }
 });
 
