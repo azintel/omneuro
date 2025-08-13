@@ -1,82 +1,68 @@
-// apps/brain-api/docs.js
 import express from 'express';
 import { google } from 'googleapis';
+import fs from 'fs';
 
 const router = express.Router();
 
-// Auth with both Drive and Docs scopes
-async function getAuth() {
+// Path to service account credentials
+const KEYFILE_PATH = '/home/ubuntu/omneuro/apps/brain-api/creds.json';
+
+// Helper: Get authenticated Google Docs API client
+async function getDocsClient() {
+  if (!fs.existsSync(KEYFILE_PATH)) {
+    throw new Error(`Credentials file not found at ${KEYFILE_PATH}`);
+  }
+
   const auth = new google.auth.GoogleAuth({
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/documents',
-    ],
+    keyFile: KEYFILE_PATH,
+    scopes: ['https://www.googleapis.com/auth/documents'],
   });
-  return auth.getClient();
+
+  const client = await auth.getClient();
+  return google.docs({ version: 'v1', auth: client });
 }
 
-router.get('/ping', (_req, res) => {
+// Ping endpoint
+router.get('/ping', (req, res) => {
   res.json({ ok: true, feature: 'google-docs' });
 });
 
-// POST /api/v1/google/docs/create
-// Body: { title: string, content?: string, folderId?: string }
+// Create a new Google Doc
 router.post('/create', async (req, res) => {
   try {
-    const { title, content = '', folderId } = req.body || {};
-    if (!title || typeof title !== 'string') {
-      return res.status(400).json({ ok: false, error: 'title (string) is required' });
+    const { title, content } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({ ok: false, error: 'Missing title or content' });
     }
 
-    const client = await getAuth();
-    const docs = google.docs({ version: 'v1', auth: client });
-    const drive = google.drive({ version: 'v3', auth: client });
+    const docs = await getDocsClient();
 
-    // 1) Create empty Google Doc with a title
-    const { data: created } = await docs.documents.create({
+    // Step 1: Create the doc
+    const createRes = await docs.documents.create({
       requestBody: { title },
     });
 
-    const docId = created.documentId;
+    const documentId = createRes.data.documentId;
 
-    // 2) If content provided, insert it
-    if (content && content.length > 0) {
-      await docs.documents.batchUpdate({
-        documentId: docId,
-        requestBody: {
-          requests: [
-            {
-              insertText: {
-                // New docs have one empty paragraph, index 1 is safe
-                location: { index: 1 },
-                text: content,
-              },
+    // Step 2: Insert text into the doc
+    await docs.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests: [
+          {
+            insertText: {
+              location: { index: 1 },
+              text: content,
             },
-          ],
-        },
-      });
-    }
+          },
+        ],
+      },
+    });
 
-    // 3) If a folderId was provided, move the doc into that folder
-    if (folderId && typeof folderId === 'string') {
-      // First fetch current parents so we can remove them
-      const { data: fileMeta } = await drive.files.get({
-        fileId: docId,
-        fields: 'parents',
-      });
-
-      await drive.files.update({
-        fileId: docId,
-        addParents: folderId,
-        removeParents: (fileMeta.parents || []).join(','),
-        fields: 'id, parents',
-      });
-    }
-
-    const url = `https://docs.google.com/document/d/${docId}/edit`;
-    return res.json({ ok: true, docId, url });
+    res.json({ ok: true, documentId, url: `https://docs.google.com/document/d/${documentId}/edit` });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
