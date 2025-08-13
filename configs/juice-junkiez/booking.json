@@ -1,0 +1,13 @@
+{
+  "calendarName": "Juice Junkiez – Bookings",
+  "dropoffAddress": "409 S Addison St, Baltimore, MD",
+  "allowedDays": [0, 2, 4, 6],
+  "windows": [
+    { "key": "MORNING", "label": "Morning (10–12)",  "start": 10, "end": 12 },
+    { "key": "AFTERNOON", "label": "Afternoon (12–15)", "start": 12, "end": 15 },
+    { "key": "EVENING", "label": "Evening (15–18)",  "start": 15, "end": 18 }
+  ],
+  "slotMinutes": 60,
+  "searchMaxDays": 14,
+  "timeZone": "America/New_York"
+}

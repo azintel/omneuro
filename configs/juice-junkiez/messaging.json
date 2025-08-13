@@ -1,0 +1,27 @@
+{
+  "sms": {
+    "bookingIntro": "Juice Junkiez: Hi {{firstName}}. Pick a drop-off window:",
+    "bookingLine": "{{date}} {{label}}: {{url}}",
+    "footer": "Drop-off: {{address}}\\nReply STOP to opt out."
+  },
+  "email": {
+    "intakeSubject": "Juice Junkiez – Work Request & Appointment Booking",
+    "intakeBody": [
+      "Hi {{firstName}},",
+      "",
+      "Thanks for submitting your Work Request{{vehicleSuffix}}. {{pdfNote}} and now it’s time to pick your drop‑off window.",
+      "",
+      "Preferred date noted: {{preferred}}",
+      "",
+      "Choose your drop‑off window (first come, first served):",
+      "{{links}}",
+      "",
+      "Once you click, we’ll lock your appointment and send a calendar invite automatically.",
+      "",
+      "Drop-off: {{address}}",
+      "Call when you’re en route.",
+      "",
+      "— Juice Junkiez"
+    ]
+  }
+}
