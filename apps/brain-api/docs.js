@@ -1,61 +1,33 @@
-import fs from 'fs';
-import path from 'path';
-import { google } from 'googleapis';
 import express from 'express';
+import { google } from 'googleapis';
+import { getOAuthClient } from './googleAuth.js';
 
 const router = express.Router();
 
-// ===== CONFIG =====
-const tokensPath = path.join('/home/ubuntu/omneuro/apps/brain-api', 'tokens.json');
-
-// These must match your OAuth client
-const CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
-const CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-const REDIRECT_URI = process.env.GOOGLE_OAUTH_REDIRECT || 'http://localhost:8081/v1/google/oauth2/callback';
-
-// Load OAuth tokens from file
-if (!fs.existsSync(tokensPath)) {
-  throw new Error(`OAuth tokens file not found at ${tokensPath}`);
-}
-const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
-
-// Create OAuth2 client and set credentials
-const oAuth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
-oAuth2Client.setCredentials(tokens);
-
-// ===== ROUTES =====
-
-// Ping
 router.get('/ping', (req, res) => {
   res.json({ ok: true, feature: 'google-docs' });
 });
 
-// Create a new Google Doc
 router.post('/create', async (req, res) => {
   try {
     const { title, content, parentId } = req.body;
-    if (!title || !content) {
-      return res.status(400).json({ ok: false, error: 'Missing title or content' });
-    }
+    const auth = getOAuthClient();
+    const docs = google.docs({ version: 'v1', auth });
+    const drive = google.drive({ version: 'v3', auth });
 
-    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-    // Step 1: Create the empty doc
-    const fileMetadata = {
-      name: title,
-      mimeType: 'application/vnd.google-apps.document',
-      ...(parentId ? { parents: [parentId] } : {})
-    };
-
+    // 1. Create empty doc
     const createRes = await drive.files.create({
-      resource: fileMetadata,
+      requestBody: {
+        name: title,
+        mimeType: 'application/vnd.google-apps.document',
+        parents: parentId ? [parentId] : undefined
+      },
       fields: 'id'
     });
 
     const docId = createRes.data.id;
 
-    // Step 2: Write content into the doc
-    const docs = google.docs({ version: 'v1', auth: oAuth2Client });
+    // 2. Insert text
     await docs.documents.batchUpdate({
       documentId: docId,
       requestBody: {
@@ -70,10 +42,10 @@ router.post('/create', async (req, res) => {
       }
     });
 
-    res.json({ ok: true, documentId: docId });
+    res.json({ ok: true, id: docId, url: `https://docs.google.com/document/d/${docId}/edit` });
   } catch (err) {
-    console.error('Error creating Google Doc:', err.response?.data || err.message || err);
-    res.status(500).json({ ok: false, error: err.message || 'Unknown error' });
+    console.error(err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
