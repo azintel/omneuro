@@ -3,6 +3,11 @@ import { google } from 'googleapis';
 
 const router = express.Router();
 
+// Simple connectivity test
+router.get('/ping', (req, res) => {
+  res.json({ ok: true, feature: 'google' });
+});
+
 async function getDrive() {
   const auth = new google.auth.GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/drive'],
@@ -15,7 +20,10 @@ async function getDrive() {
 router.get('/drive/files', async (req, res) => {
   try {
     const drive = await getDrive();
-    const { data } = await drive.files.list({ pageSize: 10, fields: 'files(id,name,mimeType,owners(emailAddress))' });
+    const { data } = await drive.files.list({
+      pageSize: 10,
+      fields: 'files(id,name,mimeType,owners(emailAddress))',
+    });
     res.json({ ok: true, files: data.files || [] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
