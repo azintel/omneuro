@@ -1,0 +1,6 @@
+# repo ignores
+node_modules/
+.env
+apps/brain-api/.env
+*.env
+.env.*
