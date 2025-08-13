@@ -1,51 +1,44 @@
 import express from 'express';
 import { google } from 'googleapis';
-import fs from 'fs';
 
 const router = express.Router();
 
-// Path to service account credentials
-const KEYFILE_PATH = '/home/ubuntu/omneuro/apps/brain-api/creds.json';
+// All new docs will be shared to this account
+const SHARE_WITH_EMAIL = 'juicejunkiezmd@gmail.com';
 
-// Helper: Get authenticated Google Docs API client
-async function getDocsClient() {
-  if (!fs.existsSync(KEYFILE_PATH)) {
-    throw new Error(`Credentials file not found at ${KEYFILE_PATH}`);
-  }
-
-  const auth = new google.auth.GoogleAuth({
-    keyFile: KEYFILE_PATH,
-    scopes: ['https://www.googleapis.com/auth/documents'],
+async function getAuth() {
+  return new google.auth.GoogleAuth({
+    keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    scopes: [
+      'https://www.googleapis.com/auth/documents',
+      'https://www.googleapis.com/auth/drive.file'
+    ]
   });
-
-  const client = await auth.getClient();
-  return google.docs({ version: 'v1', auth: client });
 }
 
-// Ping endpoint
-router.get('/ping', (req, res) => {
+router.get('/docs/ping', (req, res) => {
   res.json({ ok: true, feature: 'google-docs' });
 });
 
-// Create a new Google Doc
-router.post('/create', async (req, res) => {
+router.post('/docs/create', async (req, res) => {
   try {
     const { title, content } = req.body;
-
     if (!title || !content) {
       return res.status(400).json({ ok: false, error: 'Missing title or content' });
     }
 
-    const docs = await getDocsClient();
+    const auth = await getAuth();
+    const docs = google.docs({ version: 'v1', auth });
+    const drive = google.drive({ version: 'v3', auth });
 
-    // Step 1: Create the doc
+    // Create empty doc
     const createRes = await docs.documents.create({
-      requestBody: { title },
+      requestBody: { title }
     });
 
     const documentId = createRes.data.documentId;
 
-    // Step 2: Insert text into the doc
+    // Insert content
     await docs.documents.batchUpdate({
       documentId,
       requestBody: {
@@ -53,15 +46,34 @@ router.post('/create', async (req, res) => {
           {
             insertText: {
               location: { index: 1 },
-              text: content,
-            },
-          },
-        ],
-      },
+              text: content
+            }
+          }
+        ]
+      }
     });
 
-    res.json({ ok: true, documentId, url: `https://docs.google.com/document/d/${documentId}/edit` });
+    // Share the doc with your main Google account
+    await drive.permissions.create({
+      fileId: documentId,
+      requestBody: {
+        role: 'writer',
+        type: 'user',
+        emailAddress: SHARE_WITH_EMAIL
+      },
+      fields: 'id'
+    });
+
+    // Get the web link
+    const file = await drive.files.get({
+      fileId: documentId,
+      fields: 'id, webViewLink'
+    });
+
+    res.json({ ok: true, documentId, link: file.data.webViewLink });
+
   } catch (err) {
+    console.error('Docs create error:', err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
