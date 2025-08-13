@@ -21,7 +21,7 @@ app.use('/v1/google', googleRoutes);
 app.use('/v1/battery', batteryRoutes);
 
 // listen
-const PORT = process.env.PORT || 8080;
+const PORT = 8081;
 app.listen(PORT, () => {
   console.log(`brain-api listening on :${PORT}`);
 });
