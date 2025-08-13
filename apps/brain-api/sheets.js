@@ -66,5 +66,24 @@ router.post('/create', async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+// Append rows to an existing sheet/tab
+router.post('/append', async (req, res) => {
+  try {
+    const { spreadsheetId, range = 'Sheet1!A1', rows } = req.body || {};
+    if (!spreadsheetId || !Array.isArray(rows)) {
+      return res.status(400).json({ ok: false, error: 'spreadsheetId and rows[] required' });
+    }
+    const sheets = await getSheets();
+    const { data } = await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: rows }
+    });
+    res.json({ ok: true, result: data.updates || data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 export default router;
