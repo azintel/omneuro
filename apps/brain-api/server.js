@@ -4,7 +4,8 @@ import morgan from 'morgan';
 import bodyParser from 'body-parser';
 
 import googleRoutes from './google.js';
-import batteryRoutes from './battery.js';
+import * as battery from './battery.js';
+const batteryRoutes = battery.default || battery.router || battery.routes || battery;
 
 const app = express();
 
