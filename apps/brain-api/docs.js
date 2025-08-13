@@ -3,116 +3,69 @@ import { google } from 'googleapis';
 
 const router = express.Router();
 
-function getAuth() {
-  // Prefer explicit keyFile via GOOGLE_APPLICATION_CREDENTIALS
-  // Falls back to ADC if not set
-  return new google.auth.GoogleAuth({
-    keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS || undefined,
+// Google Drive/Docs auth
+async function getDocs() {
+  const auth = new google.auth.GoogleAuth({
+    keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
     scopes: [
       'https://www.googleapis.com/auth/drive',
       'https://www.googleapis.com/auth/documents'
-    ],
+    ]
   });
+  const client = await auth.getClient();
+  return {
+    docs: google.docs({ version: 'v1', auth: client }),
+    drive: google.drive({ version: 'v3', auth: client })
+  };
 }
 
-function docsClient(auth) {
-  return google.docs({ version: 'v1', auth });
-}
-
-function driveClient(auth) {
-  return google.drive({ version: 'v3', auth });
-}
-
+// Simple ping
 router.get('/ping', (req, res) => {
   res.json({ ok: true, feature: 'google-docs' });
 });
 
-/**
- * POST /v1/google/docs/create
- * {
- *   "title": "JJ Test Doc",
- *   "content": "Hello from Juice Junkiez!",
- *   "parentFolderId": "optional_folder_id"   // <-- Share this folder with the service account first
- * }
- */
+// Create new doc in shared folder
 router.post('/create', async (req, res) => {
-  const { title, content, parentFolderId } = req.body || {};
-  const humanEmail = 'juicejunkiezmd@gmail.com';
-
-  if (!title) {
-    return res.status(400).json({ ok: false, error: 'Missing "title"' });
-  }
-
   try {
-    const auth = getAuth();
-    const docs = docsClient(auth);
-    const drive = driveClient(auth);
+    const { title, content } = req.body;
+    if (!title || !content) {
+      return res.status(400).json({ ok: false, error: 'Missing title or content' });
+    }
 
-    // 1) Create the empty doc (Docs API)
-    const createResp = await docs.documents.create({
-      requestBody: { title },
+    const { docs, drive } = await getDocs();
+
+    // Create doc in the shared folder
+    const fileMeta = {
+      name: title,
+      mimeType: 'application/vnd.google-apps.document',
+      parents: ['14qb3_QNjg_AunkRjYG9Wk9qmiaS1QC1g'] // <-- shared folder ID
+    };
+
+    const driveRes = await drive.files.create({
+      resource: fileMeta,
+      fields: 'id'
     });
-    const documentId = createResp.data.documentId;
 
-    // 2) If caller provided a parent folder, move the file there (Drive API)
-    // Moving is done via updating parents; first we need current parents.
-    if (parentFolderId) {
-      const fileMeta = await drive.files.get({
-        fileId: documentId,
-        fields: 'parents',
-        supportsAllDrives: true,
-      });
+    const documentId = driveRes.data.id;
 
-      const previousParents = (fileMeta.data.parents || []).join(',');
-      await drive.files.update({
-        fileId: documentId,
-        addParents: parentFolderId,
-        removeParents: previousParents,
-        supportsAllDrives: true,
-        fields: 'id, parents',
-      });
-    }
-
-    // 3) Write content into the doc (Docs API)
-    if (content && content.length > 0) {
-      await docs.documents.batchUpdate({
-        documentId,
-        requestBody: {
-          requests: [
-            {
-              insertText: {
-                location: { index: 1 },
-                text: content,
-              },
-            },
-          ],
-        },
-      });
-    }
-
-    // 4) Make sure your human account can see/edit it (Drive permissions)
-    await drive.permissions.create({
-      fileId: documentId,
-      supportsAllDrives: true,
+    // Write content to doc
+    await docs.documents.batchUpdate({
+      documentId,
       requestBody: {
-        type: 'user',
-        role: 'writer',
-        emailAddress: humanEmail,
-      },
-      sendNotificationEmail: false,
+        requests: [
+          {
+            insertText: {
+              location: { index: 1 },
+              text: content
+            }
+          }
+        ]
+      }
     });
 
-    const link = `https://docs.google.com/document/d/${documentId}/edit`;
-    return res.json({ ok: true, documentId, link });
+    res.json({ ok: true, documentId, link: `https://docs.google.com/document/d/${documentId}/edit` });
   } catch (err) {
-    // Better error surfacing
-    const status = err?.response?.status || 500;
-    const gmsg = err?.response?.data?.error?.message;
-    console.error('Docs create error:', gmsg || err?.message, err?.response?.data || '');
-    return res.status(status).json({
-      ok: false,
-      error: gmsg || err?.message || 'Unknown error',
-    });
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
