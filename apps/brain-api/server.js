@@ -22,6 +22,6 @@ app.use('/v1/admin', adminRoutes);
 
 // single listen only
 const PORT = 8081;
-app.listen(PORT, () => {
-  console.log(`brain-api listening on :${PORT} (pid ${process.pid})`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`brain-api listening on :${PORT}`);
 });
