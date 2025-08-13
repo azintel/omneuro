@@ -11,45 +11,14 @@ async function getDrive() {
   return google.drive({ version: 'v3', auth: client });
 }
 
-// GET /v1/google/ping — list items in "Juice Junkiez - Admin"
-router.get('/ping', async (req, res) => {
+// GET /api/v1/google/drive/files
+router.get('/drive/files', async (req, res) => {
   try {
     const drive = await getDrive();
-
-    // Find Admin folder by exact name
-    const find = await drive.files.list({
-      q: "name = 'Juice Junkiez - Admin' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-      fields: 'files(id,name)',
-      pageSize: 1,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
-    if (!find.data.files?.length) {
-      return res.status(404).json({ ok: false, error: 'admin_folder_not_found' });
-    }
-    const admin = find.data.files[0];
-
-    // List children
-    const list = await drive.files.list({
-      q: `'${admin.id}' in parents and trashed = false`,
-      fields: 'files(id,name,mimeType,modifiedTime,size)',
-      orderBy: 'folder,name',
-      pageSize: 50,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
-
-    res.json({
-      ok: true,
-      folder: { id: admin.id, name: admin.name },
-      items: (list.data.files || []).map(f => ({
-        id: f.id, name: f.name, mimeType: f.mimeType,
-        modifiedTime: f.modifiedTime, size: f.size || null,
-      })),
-    });
+    const { data } = await drive.files.list({ pageSize: 10, fields: 'files(id,name,mimeType,owners(emailAddress))' });
+    res.json({ ok: true, files: data.files || [] });
   } catch (err) {
-    console.error('google_ping_error', err?.stack || err);
-    res.status(500).json({ ok: false, error: 'google_ping_error' });
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
