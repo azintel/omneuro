@@ -8,20 +8,17 @@ import batteryRoutes from './battery.js';
 
 const app = express();
 
-// middleware
 app.use(cors());
 app.use(morgan('dev'));
 app.use(bodyParser.json({ limit: '2mb' }));
 
-// health
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-// routes
 app.use('/v1/google', googleRoutes);
 app.use('/v1/battery', batteryRoutes);
 
-// listen (bind ONLY to 8081)
+// single listen only
 const PORT = 8081;
 app.listen(PORT, () => {
-  console.log(`brain-api listening on :${PORT}`);
+  console.log(`brain-api listening on :${PORT} (pid ${process.pid})`);
 });
