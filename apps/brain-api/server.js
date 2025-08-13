@@ -4,8 +4,7 @@ import morgan from 'morgan';
 import bodyParser from 'body-parser';
 
 import googleRoutes from './google.js';
-import * as battery from './battery.js';
-const batteryRoutes = battery.default || battery.router || battery.routes || battery;
+import batteryRoutes from './battery.js';
 
 const app = express();
 
@@ -21,7 +20,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/v1/google', googleRoutes);
 app.use('/v1/battery', batteryRoutes);
 
-// listen
+// listen (bind ONLY to 8081)
 const PORT = 8081;
 app.listen(PORT, () => {
   console.log(`brain-api listening on :${PORT}`);
