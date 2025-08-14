@@ -8,6 +8,7 @@ import googleRoutes from './google.js';
 import batteryRoutes from './battery.js';
 import adminRoutes from './admin.js'; 
 
+const PORT = parseInt(process.env.PORT || '8081', 10);
 const app = express();
 
 app.use(cors());
