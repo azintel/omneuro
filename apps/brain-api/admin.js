@@ -1,31 +1,32 @@
+// apps/brain-api/admin.js
 import express from 'express';
-import { exec } from 'child_process';
+import fs from 'fs';
+import { exec, execSync } from 'child_process';
 
 const adminRoutes = express.Router();
 
-import fs from 'fs';
-import { execSync } from 'child_process';
-
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
-function requireAdmin(req, res) {
-  const auth = req.headers.authorization || '';
-  const tok = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (!ADMIN_TOKEN || tok !== ADMIN_TOKEN) {
-    res.status(401).json({ ok: false, error: 'Unauthorized' });
-    return false;
-  }
-  return true;
-}
-
+// ---- helpers ----
 function sh(cmd) {
   try { return execSync(cmd, { encoding: 'utf8' }); }
   catch (e) { return (e?.stdout || '') + (e?.stderr || e.message); }
 }
 
+function requireAdmin(req, res, next) {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+  next();
+}
+
+// ---- tiny health ----
+adminRoutes.get('/ping', requireAdmin, (req, res) => {
+  res.json({ ok: true, feature: 'admin' });
+});
+
+// ---- status snapshot ----
 // GET /v1/admin/status
-// Lightweight snapshot so we can see process + git + listeners without SSH.
-router.get('/status', (req, res) => {
-  if (!requireAdmin(req, res)) return;
+adminRoutes.get('/status', requireAdmin, (req, res) => {
   const port = process.env.PORT || '8081';
   const now = new Date().toISOString();
 
@@ -43,10 +44,9 @@ router.get('/status', (req, res) => {
   });
 });
 
+// ---- logs tail ----
 // GET /v1/admin/logs?lines=200&src=app|err|nginx
-// src=app -> pm2 out, src=err -> pm2 error, src=nginx -> nginx error
-router.get('/logs', (req, res) => {
-  if (!requireAdmin(req, res)) return;
+adminRoutes.get('/logs', requireAdmin, (req, res) => {
   const lines = Math.max(1, Math.min(1000, parseInt(req.query.lines, 10) || 200));
   const src = String(req.query.src || 'app');
 
@@ -67,23 +67,21 @@ router.get('/logs', (req, res) => {
   res.json({ ok: true, src, lines, file, content });
 });
 
-// Tiny bearer auth helper
-function requireAdmin(req, res, next) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ ok: false, error: 'unauthorized' });
-  }
-  next();
-}
-
-// Health
-adminRoutes.get('/ping', requireAdmin, (req, res) => {
-  res.json({ ok: true, feature: 'admin' });
+// ---- route introspection (debug) ----
+// GET /v1/admin/_routes
+adminRoutes.get('/_routes', requireAdmin, (req, res) => {
+  const routes = adminRoutes.stack
+    .filter(r => r.route)
+    .map(r => ({
+      path: r.route.path,
+      methods: Object.keys(r.route.methods || {}),
+    }));
+  res.json({ ok: true, routes });
 });
 
-// Trigger deploy on the box
+// ---- trigger deploy on the box ----
+// POST /v1/admin/deploy
 adminRoutes.post('/deploy', requireAdmin, (req, res) => {
-  // adjust commands here as needed
   const cmd = `
     set -e
     cd ~/omneuro
@@ -98,7 +96,7 @@ adminRoutes.post('/deploy', requireAdmin, (req, res) => {
     if (err) {
       return res.status(500).json({ ok: false, error: err.message, stderr });
     }
-    res.json({ ok: true, ran: cmd.split('\n')[0] + ' ...', stdout });
+    res.json({ ok: true, ran: cmd.split('\\n')[0] + ' ...', stdout });
   });
 });
 
