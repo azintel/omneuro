@@ -1,17 +1,30 @@
-# omneuro monorepo
+# omneuro / brain-api
 
-This repo hosts your automation brain and (later) the web portal.
+## Overview
+**brain-api** is a Node.js + Express backend providing unified Google API integration (Docs, Sheets, Drive) plus admin automation endpoints for remote deployment.
 
-## Layout
-- apps/brain-api — Node API (central brain)
-- apps/web-portal — Next.js site (client portal) [todo]
-- packages/core — shared logic (slotting, templating) [todo]
-- packages/connectors — Google, Telnyx, Stripe SDK wrappers [todo]
-- configs/juice-junkiez — business configuration (JSON)
-- infra/docker — Docker Compose for deployment
+You can:
+- Create and edit Google Docs
+- Create and append Google Sheets
+- List Google Drive files
+- Trigger EC2 server pulls + restarts from GitHub Actions or manually
 
-## Quick start
-1) cd apps/brain-api && cp .env.example .env && npm i
-2) From repo root: docker compose -f infra/docker/docker-compose.yml up -d --build
-3) Visit http://localhost:8080/health
+---
 
+## Tech Stack
+- **Node.js** (ESM modules)
+- **Express.js**
+- **Google APIs Node.js Client**
+- **PM2** for process management
+- **GitHub Actions** for automated deployment to EC2
+- **AWS EC2** (Ubuntu) hosting
+
+---
+
+## Local Development
+
+### 1. Clone & install
+```bash
+git clone git@github.com:azintel/omneuro.git
+cd omneuro/apps/brain-api
+npm install
