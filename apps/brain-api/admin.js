@@ -5,6 +5,8 @@ import { exec, execSync } from 'child_process';
 
 const adminRoutes = express.Router();
 
+console.log('ADMIN_INIT', new Date().toISOString());
+
 adminRoutes.get('/_routes', requireAdmin, (req, res) => {
   const stack = req.app?._router?.stack || [];
   const routes = stack
@@ -107,5 +109,7 @@ adminRoutes.post('/deploy', requireAdmin, (req, res) => {
     res.json({ ok: true, ran: cmd.split('\\n')[0] + ' ...', stdout });
   });
 });
+
+console.log('ADMIN_ROUTES', (adminRoutes.stack||[]).filter(x=>x.route).map(x=>x.route.path));
 
 export default adminRoutes;
