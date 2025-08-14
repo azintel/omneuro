@@ -28,3 +28,4 @@ You can:
 git clone git@github.com:azintel/omneuro.git
 cd omneuro/apps/brain-api
 npm install- deploy test Wed Aug 13 20:54:37 EDT 2025
+- deploy test Wed Aug 13 20:57:09 EDT 2025
