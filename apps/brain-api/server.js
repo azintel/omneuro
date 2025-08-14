@@ -22,7 +22,7 @@ app.use('/v1/admin', adminRoutes);
 
 // --- /api/deploy (improved) ---
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const DEPLOY_LOG = '/home/ubuntu/omneuro/apps/brain-api/deploy.log';
@@ -48,7 +48,7 @@ async function waitForHealthy(timeoutMs = 25000) {
   return { healthy: false, lastErr };
 }
 
-app.post('/api/deploy', express.json(), async (req, res) => {
+app.post('/api/deploy', express.json(), (req, res) => {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
@@ -60,20 +60,21 @@ app.post('/api/deploy', express.json(), async (req, res) => {
   const line = `[${ts}] actor=${actor} repo=${repo} sha=${sha} reason="${reason}"\n`;
   try { fs.appendFileSync(DEPLOY_LOG, line); } catch {}
 
-  res.status(202).json({ ok: true, accepted: true, reason, sha, actor, repo });
+  const cmd = `
+    set -e
+    cd ${PROJECT_DIR}
+    git fetch origin
+    git reset --hard origin/main
+    cd apps/brain-api
+    pm2 restart brain-api
+    pm2 save
+  `;
 
-  setTimeout(() => {
-    try {
-      execSync(
-        `bash -lc 'set -e; cd ${PROJECT_DIR}; git fetch origin; git reset --hard origin/main; cd apps/brain-api; pm2 restart brain-api; pm2 save'`,
-        { stdio: 'ignore' }
-      );
-      fs.appendFileSync(DEPLOY_LOG, `[${new Date().toISOString()}] deploy_kicked\n`);
-    } catch (e) {
-      const msg = e?.message || String(e);
-      try { fs.appendFileSync(DEPLOY_LOG, `[${new Date().toISOString()}] deploy_error "${msg}"\n`); } catch {}
-    }
-  }, 250);
+  // run in background so the request doesn't die mid-restart
+  const child = spawn('bash', ['-lc', cmd], { detached: true, stdio: 'ignore' });
+  child.unref();
+
+  return res.status(202).json({ ok: true, accepted: true, reason, sha, actor, repo });
 });
 
     // health check
