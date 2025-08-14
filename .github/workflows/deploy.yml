@@ -1,1 +1,22 @@
+name: EC2 Auto-Deploy
 
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (shallow)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Trigger remote deploy
+        run: |
+          curl -fsS -X POST "http://18.221.67.174/api/deploy" \
+            -H "Authorization: Bearer ${{ secrets.OMNEURO_DEPLOY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"reason":"GitHub Actions auto-deploy"}'

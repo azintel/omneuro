@@ -27,4 +27,4 @@ You can:
 ```bash
 git clone git@github.com:azintel/omneuro.git
 cd omneuro/apps/brain-api
-npm install
+npm install- deploy test Wed Aug 13 20:54:37 EDT 2025
