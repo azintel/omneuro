@@ -23,6 +23,31 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+import { getAppointments } from "./lib/scheduler.js";
+import { sendSMS } from "./lib/sms.js";
+
+adminRoutes.post("/notify/day", requireAdmin, async (req, res) => {
+  const { date, message = "", dry_run = true } = req.body || {};
+  const appts = await getAppointments(date);
+  const msgs = appts.map(a => {
+    const time = new Date(a.start_time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    const body = message && message.length > 0
+      ? message.replaceAll("{name}", a.client_name).replaceAll("{time}", time).replaceAll("{service}", a.service)
+      : `Reminder: ${a.service} at ${time}. Reply if you need to reschedule.`;
+    return { to: a.client_phone, body, meta: { client_id: a.client_id, appt_id: a.id } };
+  });
+  if (dry_run) {
+    return res.json({ ok: true, count: msgs.length, preview: msgs });
+  }
+  const results = [];
+  for (const m of msgs) {
+    const r = await sendSMS({ to: m.to, body: m.body });
+    results.push({ to: m.to, status: r.status, ok: r.ok });
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return res.json({ ok: true, count: msgs.length, results });
+});
+
 function listRoutes(r) {
   const out = [];
   (r.stack || []).forEach(layer => {
