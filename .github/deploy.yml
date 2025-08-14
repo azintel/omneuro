@@ -1,0 +1,34 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger deploy on EC2
+        run: |
+          curl -fsS -X POST "http://18.221.67.174/api/admin/deploy" \
+            -H "X-Admin-Token: ${{ secrets.ADMIN_DEPLOY_TOKEN }}"
+
+      - name: Wait for API to come back (health)
+        run: |
+          for i in {1..30}; do
+            if curl -fsS "http://18.221.67.174/api/health" | jq -e '.ok == true' >/dev/null 2>&1; then
+              echo "Health OK"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check failed"; exit 1
+
+      - name: Sanity check key route (docs ping)
+        run: |
+          curl -fsS "http://18.221.67.174/api/v1/google/docs/ping" | jq -e '.ok == true' >/dev/null
