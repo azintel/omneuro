@@ -49,23 +49,32 @@ async function waitForHealthy(timeoutMs = 25000) {
 }
 
 app.post('/api/deploy', express.json(), async (req, res) => {
-  try {
-    const auth = req.headers.authorization || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
-      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
+  const { reason = 'manual', sha = '', actor = '', repo = '' } = req.body || {};
+  const ts = new Date().toISOString();
+  const line = `[${ts}] actor=${actor} repo=${repo} sha=${sha} reason="${reason}"\n`;
+  try { fs.appendFileSync(DEPLOY_LOG, line); } catch {}
+
+  res.status(202).json({ ok: true, accepted: true, reason, sha, actor, repo });
+
+  setTimeout(() => {
+    try {
+      execSync(
+        `bash -lc 'set -e; cd ${PROJECT_DIR}; git fetch origin; git reset --hard origin/main; cd apps/brain-api; pm2 restart brain-api; pm2 save'`,
+        { stdio: 'ignore' }
+      );
+      fs.appendFileSync(DEPLOY_LOG, `[${new Date().toISOString()}] deploy_kicked\n`);
+    } catch (e) {
+      const msg = e?.message || String(e);
+      try { fs.appendFileSync(DEPLOY_LOG, `[${new Date().toISOString()}] deploy_error "${msg}"\n`); } catch {}
     }
-
-    const { reason = 'manual', sha = '', actor = '', repo = '' } = req.body || {};
-    const ts = new Date().toISOString();
-    const line = `[${ts}] actor=${actor} repo=${repo} sha=${sha} reason="${reason}"\n`;
-    try { fs.appendFileSync(DEPLOY_LOG, line); } catch {}
-
-    // pull & restart (propagate env with --update-env)
-    execSync(
-      `bash -lc 'set -e; cd ${PROJECT_DIR}; git fetch origin; git reset --hard origin/main; cd apps/brain-api; pm2 restart brain-api --update-env; pm2 save'`,
-      { stdio: 'inherit' }
-    );
+  }, 250);
+});
 
     // health check
     const { healthy, lastErr } = await waitForHealthy(25000);
