@@ -65,7 +65,7 @@ async function waitForHealthy(timeoutMs = 25000) {
   return { healthy: false, lastErr };
 }
 
-app.post('/api/deploy', express.json(), async (req, res) => {
+app.post(['/api/deploy', '/deploy'], express.json(), async (req, res) => {
   try {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
