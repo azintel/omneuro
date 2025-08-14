@@ -29,7 +29,7 @@ const DEPLOY_LOG = '/home/ubuntu/omneuro/apps/brain-api/deploy.log';
 const PROJECT_DIR = '/home/ubuntu/omneuro';
 
 // make PORT env-driven (defaults to 8081)
-const PORT = Number(process.env.PORT || 8081);
+const PORT = process.env.PORT || 8081;
 const HEALTH_URL = `http://127.0.0.1:${PORT}/health`;
 
 // tiny helper: health check with curl (no extra deps)
