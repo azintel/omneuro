@@ -4,3 +4,7 @@ node_modules/
 apps/brain-api/.env
 *.env
 .env.*
+apps/brain-api/creds.json
+apps/brain-api/tokens.json
+apps/brain-api/ecosystem.config.cjs
+*.pem
