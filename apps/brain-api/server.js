@@ -23,6 +23,30 @@ app.use('/v1/google', googleRoutes);
 app.use('/v1/battery', batteryRoutes);
 app.use('/v1/admin', adminRoutes);
 
+import crypto from 'crypto';
+
+const ADMIN_TOKEN = (process.env.ADMIN_TOKEN || '').trim();
+
+function bearer(req) {
+  const h = req.headers['authorization'] || '';
+  return h.startsWith('Bearer ') ? h.slice(7) : '';
+}
+
+app.post('/v1/admin/notify/day', async (req, res) => {
+  if (!ADMIN_TOKEN || bearer(req) !== ADMIN_TOKEN) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const { dry_run = true, recipients = [], template = 'Appt reminder for {name} at {time}' } = req.body || {};
+  const telnyxReady = !!(process.env.TELNYX_API_KEY && process.env.TELNYX_FROM);
+  const preview = (recipients || []).slice(0, 10).map(r => ({
+    id: crypto.randomUUID(),
+    to: r.phone || '',
+    text: template
+      .replace('{name}', r.name || '')
+      .replace('{time}', r.time || '')
+  }));
+  if (dry_run || !telnyxReady) return res.json({ ok: true, dry_run: true, telnyx_ready: telnyxReady, count: recipients.length, preview });
+  return res.json({ ok: true, enqueued: recipients.length, telnyx_ready: telnyxReady });
+});
+
 console.log('ADMIN_MOUNTED');
 
 function listAppRoutes(router) {
