@@ -5,6 +5,14 @@ import { exec, execSync } from 'child_process';
 
 const adminRoutes = express.Router();
 
+adminRoutes.get('/_routes', requireAdmin, (req, res) => {
+  const stack = req.app?._router?.stack || [];
+  const routes = stack
+    .filter(l => l.route && l.route.path)
+    .map(l => ({ methods: Object.keys(l.route.methods), path: l.route.path }));
+  res.json({ ok: true, routes });
+});
+
 // ---- helpers ----
 function sh(cmd) {
   try { return execSync(cmd, { encoding: 'utf8' }); }
