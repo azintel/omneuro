@@ -15,8 +15,32 @@ jobs:
           fetch-depth: 1
 
       - name: Trigger remote deploy
+        env:
+          DEPLOY_URL: http://18.221.67.174/api/deploy
+          AUTH: ${{ secrets.OMNEURO_DEPLOY_TOKEN }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
         run: |
-          curl -fsS -X POST "http://18.221.67.174/api/deploy" \
-            -H "Authorization: Bearer ${{ secrets.OMNEURO_DEPLOY_TOKEN }}" \
+          set -e
+          echo "Triggering deploy for $REPO@$SHA by $ACTOR"
+          curl -fsS -X POST "$DEPLOY_URL" \
+            -H "Authorization: Bearer $AUTH" \
             -H "Content-Type: application/json" \
-            -d '{"reason":"GitHub Actions auto-deploy"}'
+            -d "{\"reason\":\"GitHub Actions auto-deploy\",\"sha\":\"$SHA\",\"actor\":\"$ACTOR\",\"repo\":\"$REPO\"}"
+
+      - name: Post-deploy health check
+        env:
+          HEALTH_URL: http://18.221.67.174/api/health
+        run: |
+          set -e
+          echo "Waiting for service to become healthy…"
+          for i in {1..20}; do
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
+              echo "✅ Healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Health check failed"
+          exit 1

@@ -27,7 +27,10 @@ import { execSync } from 'child_process';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const DEPLOY_LOG = '/home/ubuntu/omneuro/apps/brain-api/deploy.log';
 const PROJECT_DIR = '/home/ubuntu/omneuro';
-const HEALTH_URL = 'http://127.0.0.1:8081/health';
+
+// make PORT env-driven (defaults to 8081)
+const PORT = Number(process.env.PORT || 8081);
+const HEALTH_URL = `http://127.0.0.1:${PORT}/health`;
 
 // tiny helper: health check with curl (no extra deps)
 async function waitForHealthy(timeoutMs = 25000) {
@@ -58,9 +61,9 @@ app.post('/api/deploy', express.json(), async (req, res) => {
     const line = `[${ts}] actor=${actor} repo=${repo} sha=${sha} reason="${reason}"\n`;
     try { fs.appendFileSync(DEPLOY_LOG, line); } catch {}
 
-    // pull & restart
+    // pull & restart (propagate env with --update-env)
     execSync(
-      `bash -lc 'set -e; cd ${PROJECT_DIR}; git fetch origin; git reset --hard origin/main; cd apps/brain-api; pm2 restart brain-api; pm2 save'`,
+      `bash -lc 'set -e; cd ${PROJECT_DIR}; git fetch origin; git reset --hard origin/main; cd apps/brain-api; pm2 restart brain-api --update-env; pm2 save'`,
       { stdio: 'inherit' }
     );
 
@@ -78,8 +81,7 @@ app.post('/api/deploy', express.json(), async (req, res) => {
   }
 });
 
-// single listen only
-const PORT = 8081;
+// single listen only (env-driven)
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`brain-api listening on :${PORT}`);
 });
