@@ -1,3 +1,4 @@
+# .github/workflows/deploy.yml
 name: EC2 Auto-Deploy
 
 on:
@@ -8,6 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout (shallow)
         uses: actions/checkout@v4
@@ -17,30 +19,30 @@ jobs:
       - name: Trigger remote deploy
         env:
           DEPLOY_URL: http://18.221.67.174/api/deploy
-          AUTH: ${{ secrets.OMNEURO_DEPLOY_TOKEN }}
-          SHA: ${{ github.sha }}
-          ACTOR: ${{ github.actor }}
-          REPO: ${{ github.repository }}
+          DEPLOY_TOKEN: ${{ secrets.OMNEURO_DEPLOY_TOKEN }}
         run: |
           set -e
-          echo "Triggering deploy for $REPO@$SHA by $ACTOR"
-          curl -fsS -X POST "$DEPLOY_URL" \
-            -H "Authorization: Bearer $AUTH" \
+          echo "Pinging $DEPLOY_URL ..."
+          # 10s connect timeout, 30s overall, retry up to 5 with backoff
+          curl -fsS -m 30 --connect-timeout 10 \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -X POST "$DEPLOY_URL" \
+            -H "Authorization: Bearer $DEPLOY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"reason\":\"GitHub Actions auto-deploy\",\"sha\":\"$SHA\",\"actor\":\"$ACTOR\",\"repo\":\"$REPO\"}"
+            -d "$(jq -nc --arg sha "$GITHUB_SHA" --arg actor "$GITHUB_ACTOR" --arg repo "$GITHUB_REPOSITORY" \
+                  '{reason:"GitHub Actions auto-deploy", sha:$sha, actor:$actor, repo:$repo }')"
 
-      - name: Post-deploy health check
-        env:
-          HEALTH_URL: http://18.221.67.174/api/health
+      - name: Verify health
         run: |
           set -e
-          echo "Waiting for service to become healthy…"
-          for i in {1..20}; do
-            if curl -fsS "$HEALTH_URL" >/dev/null; then
-              echo "✅ Healthy"
+          echo "Waiting for health at http://18.221.67.174/api/health ..."
+          # retry health for ~45s
+          for i in $(seq 1 15); do
+            if curl -fsS -m 5 --connect-timeout 3 http://18.221.67.174/api/health >/dev/null; then
+              echo "OK"
               exit 0
             fi
-            sleep 2
+            sleep 3
           done
-          echo "❌ Health check failed"
+          echo "Health check failed"
           exit 1
