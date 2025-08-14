@@ -1,21 +1,9 @@
-// apps/brain-api/admin.js
 import express from 'express';
 import fs from 'fs';
 import { exec, execSync } from 'child_process';
 
 const adminRoutes = express.Router();
 
-console.log('ADMIN_INIT', new Date().toISOString());
-
-adminRoutes.get('/_routes', requireAdmin, (req, res) => {
-  const stack = req.app?._router?.stack || [];
-  const routes = stack
-    .filter(l => l.route && l.route.path)
-    .map(l => ({ methods: Object.keys(l.route.methods), path: l.route.path }));
-  res.json({ ok: true, routes });
-});
-
-// ---- helpers ----
 function sh(cmd) {
   try { return execSync(cmd, { encoding: 'utf8' }); }
   catch (e) { return (e?.stdout || '') + (e?.stderr || e.message); }
@@ -29,68 +17,41 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// ---- tiny health ----
 adminRoutes.get('/ping', requireAdmin, (req, res) => {
   res.json({ ok: true, feature: 'admin' });
 });
 
-// ---- status snapshot ----
-// GET /v1/admin/status
 adminRoutes.get('/status', requireAdmin, (req, res) => {
   const port = process.env.PORT || '8081';
   const now = new Date().toISOString();
-
-  const pm2 = sh('pm2 jlist | head -c 20000'); // cap output
+  const pm2 = sh('pm2 jlist | head -c 20000');
   const git = sh('bash -lc "cd ~/omneuro; git rev-parse --short HEAD; git --no-pager log -1 --oneline"');
   const listeners = sh(`ss -ltnp | grep ":${port} " || true`);
-
-  res.json({
-    ok: true,
-    now,
-    env: { PORT: port },
-    pm2: pm2.trim(),
-    git: git.trim(),
-    listeners: listeners.trim(),
-  });
+  res.json({ ok: true, now, env: { PORT: port }, pm2: pm2.trim(), git: git.trim(), listeners: listeners.trim() });
 });
 
-// ---- logs tail ----
-// GET /v1/admin/logs?lines=200&src=app|err|nginx
 adminRoutes.get('/logs', requireAdmin, (req, res) => {
   const lines = Math.max(1, Math.min(1000, parseInt(req.query.lines, 10) || 200));
   const src = String(req.query.src || 'app');
-
   const PATHS = {
     app: '/home/ubuntu/.pm2/logs/brain-api-out.log',
     err: '/home/ubuntu/.pm2/logs/brain-api-error.log',
     nginx: '/var/log/nginx/error.log',
   };
   const file = PATHS[src] || PATHS.app;
-
   let content = '';
-  if (fs.existsSync(file)) {
-    content = sh(`tail -n ${lines} ${file}`);
-  } else {
-    content = `Missing log file: ${file}`;
-  }
-
+  if (fs.existsSync(file)) content = sh(`tail -n ${lines} ${file}`);
+  else content = `Missing log file: ${file}`;
   res.json({ ok: true, src, lines, file, content });
 });
 
-// ---- route introspection (debug) ----
-// GET /v1/admin/_routes
 adminRoutes.get('/_routes', requireAdmin, (req, res) => {
-  const routes = adminRoutes.stack
+  const routes = (adminRoutes.stack || [])
     .filter(r => r.route)
-    .map(r => ({
-      path: r.route.path,
-      methods: Object.keys(r.route.methods || {}),
-    }));
+    .map(r => ({ path: r.route.path, methods: Object.keys(r.route.methods || {}) }));
   res.json({ ok: true, routes });
 });
 
-// ---- trigger deploy on the box ----
-// POST /v1/admin/deploy
 adminRoutes.post('/deploy', requireAdmin, (req, res) => {
   const cmd = `
     set -e
@@ -101,15 +62,10 @@ adminRoutes.post('/deploy', requireAdmin, (req, res) => {
     pm2 restart brain-api --update-env
     pm2 save
   `.trim();
-
   exec(cmd, { shell: '/bin/bash' }, (err, stdout, stderr) => {
-    if (err) {
-      return res.status(500).json({ ok: false, error: err.message, stderr });
-    }
-    res.json({ ok: true, ran: cmd.split('\\n')[0] + ' ...', stdout });
+    if (err) return res.status(500).json({ ok: false, error: err.message, stderr });
+    res.json({ ok: true, ran: cmd.split('\n')[0] + ' ...', stdout });
   });
 });
-
-console.log('ADMIN_ROUTES', (adminRoutes.stack||[]).filter(x=>x.route).map(x=>x.route.path));
 
 export default adminRoutes;
