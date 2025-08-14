@@ -7,6 +7,7 @@ import sheetsRoutes from './sheets.js';
 import googleRoutes from './google.js';
 import batteryRoutes from './battery.js';
 import adminRoutes from './admin.js'; 
+import fs from 'fs';
 
 const PORT = parseInt(process.env.PORT || '8081', 10);
 const app = express();
@@ -99,6 +100,18 @@ app.post(['/api/deploy', '/deploy'], express.json(), async (req, res) => {
     return res.status(500).json({ ok: false, error: msg });
   }
 });
+
+process.env.ADMIN_TOKEN = process.env.ADMIN_TOKEN || (() => {
+  try { return fs.readFileSync('/home/ubuntu/omneuro/.secrets/admin_token.txt','utf8').trim(); } catch { return ''; }
+})();
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`brain-api listening on :${PORT}`);
+});
+server.on('error', (e) => {
+  console.error(e); process.exit(1);
+});
+
 // single listen only (env-driven)
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`brain-api listening on :${PORT}`);
