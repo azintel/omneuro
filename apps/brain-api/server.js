@@ -19,6 +19,26 @@ app.use('/v1/google/docs', docsRoutes);
 app.use('/v1/google', googleRoutes);
 app.use('/v1/battery', batteryRoutes);
 app.use('/v1/admin', adminRoutes);
+console.log('ADMIN_MOUNTED');
+function listAppRoutes(router) {
+  const out = [];
+  (router.stack || []).forEach(layer => {
+    if (layer.route) {
+      out.push({ path: layer.route?.path, methods: Object.keys(layer.route?.methods || {}) });
+    } else if (layer.name === 'router' && layer.handle?.stack) {
+      const base = layer.regexp?.fast_slash ? '' : (layer.regexp?.toString() || '');
+      const nested = [];
+      layer.handle.stack.forEach(r => {
+        if (r.route) nested.push({ path: r.route.path, methods: Object.keys(r.route.methods || {}) });
+      });
+      out.push({ router: base, nested });
+    }
+  });
+  return out;
+}
+app.get('/__routes', (req, res) => {
+  res.json({ ok: true, routes: listAppRoutes(app._router) });
+});
 
 // --- /api/deploy (fixed) ---
 import fs from 'fs';
