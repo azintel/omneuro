@@ -19,4 +19,8 @@ app.get("/", (_req, res) =>
 );
 
 const port = Number(process.env.PORT || 8092);
+
+app.use("/", express.static(path.join(__dirname, "public")));
+app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+
 app.listen(port, () => process.stdout.write(String(port)));
