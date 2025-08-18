@@ -1,0 +1,20 @@
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const dataDir = path.join(__dirname,'data');
+const dataFile = path.join(dataDir,'memory.json');
+fs.mkdirSync(dataDir,{recursive:true});
+if(!fs.existsSync(dataFile)){ fs.writeFileSync(dataFile,'{}'); }
+const readStore=()=>JSON.parse(fs.readFileSync(dataFile,'utf8'));
+const writeStore=o=>fs.writeFileSync(dataFile,JSON.stringify(o,null,2));
+const app=express();
+app.use(express.json());
+const KEY=process.env.MEM_KEY||'dev';
+app.get('/healthz',(_req,res)=>res.json({ok:true}));
+app.get('/memory/:key',(req,res)=>{const s=readStore();const v=s[req.params.key];if(v===undefined)return res.status(404).json({error:'not_found'});res.json({key:req.params.key,value:v});});
+app.get('/memory',(req,res)=>{const s=readStore();const p=String(req.query.prefix||'');const out={};for(const k of Object.keys(s)){if(k.startsWith(p))out[k]=s[k];}res.json(out);});
+app.post('/memory',(req,res)=>{if((req.headers['x-admin-key']||'')!==KEY)return res.status(401).json({error:'unauthorized'});const {key,value}=req.body||{};if(!key)return res.status(400).json({error:'key_required'});const s=readStore();s[key]=value;writeStore(s);res.json({ok:true});});
+const port=Number(process.env.PORT||8099);
+app.listen(port,()=>process.stdout.write(String(port)));
