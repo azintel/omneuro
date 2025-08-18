@@ -1,49 +1,38 @@
-cat > apps/tech-gateway/src/routes.ts <<'TS'
-import { Router } from "express";
-import { z } from "zod";
+import { Router, Request, Response } from 'express';
+import { z } from 'zod';
+import { logMessage, recentMessages } from './db.js';
 
 export const appRouter = Router();
 
-// POST /v1/msg  -> accept a message from a tech client
-appRouter.post("/msg", (req, res) => {
-  const schema = z.object({
-    phone: z.string().min(1),
-    body: z.string().min(1),
-  });
+appRouter.post('/msg', (req: Request, res: Response) => {
+  const schema = z.object({ phone: z.string().min(1), body: z.string().min(1) });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ ok: false, error: parsed.error.flatten() });
-  }
-  // TODO: enqueue to Omneuro / log to DB
-  res.json({ ok: true });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { phone, body } = parsed.data;
+  const row = logMessage(phone, body, 'in');
+  res.json({ ok: true, message: row });
 });
 
-// GET /v1/stream -> SSE stream to tech client
-appRouter.get("/stream", (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders?.();
-
-  // minimal heartbeat
-  res.write(`data: ${JSON.stringify({ items: [{ body: "connected", dir: "out" }] })}\n\n`);
-
-  // keepalive ping
-  const t = setInterval(() => res.write(`event: ping\ndata: {}\n\n`), 25000);
-  req.on("close", () => clearInterval(t));
+appRouter.get('/stream', (req: Request, res: Response) => {
+  const techId = String(req.query.tech_id || '');
+  if (!techId) return res.status(400).end();
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  const phone = `local-${techId}`;
+  const items = recentMessages(phone);
+  res.write(`data: ${JSON.stringify({ items })}\n\n`);
+  const interval = setInterval(() => {
+    res.write(`event: ping\ndata: {}\n\n`);
+  }, 25000);
+  req.on('close', () => clearInterval(interval));
 });
 
-// POST /v1/reply -> accept bot/system replies
-appRouter.post("/reply", (req, res) => {
-  const schema = z.object({
-    phone: z.string().min(1),
-    body: z.string().min(1),
-  });
+appRouter.post('/reply', (req: Request, res: Response) => {
+  const schema = z.object({ phone: z.string().min(1), body: z.string().min(1) });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ ok: false, error: parsed.error.flatten() });
-  }
-  // TODO: persist reply / fan-out to SSE listeners
-  res.json({ ok: true });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { phone, body } = parsed.data;
+  const row = logMessage(phone, body, 'out');
+  res.json({ ok: true, message: row });
 });
-TS

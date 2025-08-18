@@ -1,21 +1,29 @@
 import Database from 'better-sqlite3';
 import { customAlphabet } from 'nanoid';
-export const nid = customAlphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', 16);
-export const db = new Database('tech-gateway.db');
-db.pragma('journal_mode = WAL');
-db.exec(`
-CREATE TABLE IF NOT EXISTS technicians(
+
+const db = new Database('tech-gateway.db');
+db.exec(`CREATE TABLE IF NOT EXISTS messages(
   id TEXT PRIMARY KEY,
-  phone TEXT UNIQUE NOT NULL,
-  name TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS messages(
-  id TEXT PRIMARY KEY,
-  tech_id TEXT NOT NULL,
-  dir TEXT NOT NULL,
-  body TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY(tech_id) REFERENCES technicians(id)
-);
-`);
+  phone TEXT,
+  body TEXT,
+  dir TEXT,
+  ts INTEGER
+)`);
+
+const nid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
+
+export function logMessage(phone: string, body: string, dir: 'in'|'out') {
+  const id = nid();
+  const ts = Date.now();
+  db.prepare('INSERT INTO messages (id,phone,body,dir,ts) VALUES (?,?,?,?,?)')
+    .run(id, phone, body, dir, ts);
+  return { id, phone, body, dir, ts };
+}
+
+export function recentMessages(phone: string, limit = 50) {
+  return db.prepare('SELECT * FROM messages WHERE phone=? ORDER BY ts DESC LIMIT ?')
+    .all(phone, limit)
+    .reverse();
+}
+
+export default db;

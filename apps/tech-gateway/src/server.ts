@@ -1,24 +1,16 @@
-cat > apps/tech-gateway/src/server.ts <<'TS'
-import "dotenv/config";
-import express from "express";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { appRouter } from "./routes.js";
+import 'dotenv/config';
+import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { appRouter } from './routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.use(express.json());
-
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
-
-app.use("/v1", appRouter);
-
-// serve the simple web chat
-app.use("/", express.static(path.join(__dirname, "public")));
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
+app.use('/v1', appRouter);
+app.use('/', express.static(path.join(__dirname, 'public')));
 
 const port = Number(process.env.PORT || 8092);
-app.listen(port, () => {
-  process.stdout.write(String(port));
-});
-TS
+app.listen(port, () => process.stdout.write(String(port)));
