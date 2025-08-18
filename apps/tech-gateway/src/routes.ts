@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db, nid } from './db.js';
 import { z } from 'zod';
 
-const router = Router();
+const appRouter = Router();
 const inSchema = z.object({ phone: z.string().min(7), name: z.string().optional(), body: z.string().min(1) });
 const replySchema = z.object({ tech_id: z.string().min(6), body: z.string().min(1) });
 
@@ -46,4 +46,4 @@ router.post('/reply', (req,res)=>{
   res.json({ ok:true, message_id: mid });
 });
 
-export const router = router;
+export const appRouter = appRouter;
