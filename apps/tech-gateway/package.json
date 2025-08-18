@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "postbuild": "mkdir -p dist/public && cp -R src/public/* dist/public/ 2>/dev/null || true"
   },
   "keywords": [],
   "author": "",
