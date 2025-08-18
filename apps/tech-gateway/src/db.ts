@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
+import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { customAlphabet } from 'nanoid';
 
-const db = new Database('tech-gateway.db');
+const db: SQLiteDatabase = new Database('tech-gateway.db');
 db.exec(`CREATE TABLE IF NOT EXISTS messages(
   id TEXT PRIMARY KEY,
   phone TEXT,

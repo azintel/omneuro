@@ -1,4 +1,5 @@
-import { Router, Request, Response } from 'express';
+import express, { Router } from 'express';
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { logMessage, recentMessages } from './db.js';
 
