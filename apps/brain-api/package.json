@@ -5,18 +5,24 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node dist/server.js",
     "dev": "NODE_ENV=development node server.js",
-    "send-sms": "node tools/send.js"
+    "send-sms": "node tools/send.js",
+    "build": "tsc"
   },
   "dependencies": {
     "axios": "^1.7.2",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "express": "^4.21.2",
     "googleapis": "^126.0.1",
     "morgan": "^1.10.0",
     "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
   }
 }
