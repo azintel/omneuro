@@ -1,20 +1,15 @@
-// apps/brain-api/src/server.ts
 import express from "express";
-import { techRouter } from "./routes/tech.js";  // ← .js extension is REQUIRED
+import { techRouter } from "./routes/tech.js";
 
 const app = express();
-const port = process.env.PORT || 8081;
+const port = Number(process.env.PORT || 8081);
 
 app.use(express.json({ limit: "5mb" }));
+app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
-// mount our tech API
+// Mount at /v1 so the gateway’s forwards match
 app.use("/v1", techRouter);
 
-// simple health endpoint
-app.get("/healthz", (_req, res) => {
-  res.send("brain-api OK");
-});
-
 app.listen(port, () => {
-  console.log(`brain-api listening on port ${port}`);
+  process.stdout.write(`brain-api:${port}`);
 });
