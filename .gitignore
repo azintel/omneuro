@@ -8,3 +8,5 @@ apps/brain-api/creds.json
 apps/brain-api/tokens.json
 apps/brain-api/ecosystem.config.cjs
 *.pem
+apps/tech-gateway/*.db
+AWSCLIV2.pkg
