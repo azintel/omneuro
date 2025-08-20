@@ -1,16 +1,13 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 
 export const techRouter = Router();
 
-techRouter.post("/repairbot/message", async (req, res) => {
-  const payload = req.body ?? {};
-  // TODO: call internal repairbot handler; for now echo
-  res.json({ ok: true, echo: payload });
+techRouter.post("/repairbot/message", async (req: Request, res: Response) => {
+  // TODO: call RepairBot when ready; for now echo payload for MVP
+  res.json({ ok: true, echo: req.body ?? {} });
 });
 
-techRouter.patch("/jobs/:id/status", async (req, res) => {
+techRouter.patch("/jobs/:id/status", async (req: Request, res: Response) => {
   const id = req.params.id;
-  const payload = req.body ?? {};
-  // TODO: persist status; for now echo
-  res.json({ ok: true, id, status: payload });
+  res.json({ ok: true, id, status: req.body ?? {} });
 });

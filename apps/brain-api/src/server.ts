@@ -5,11 +5,13 @@ const app = express();
 const port = Number(process.env.PORT || 8081);
 
 app.use(express.json({ limit: "5mb" }));
+
+// health
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
-// Mount at /v1 so the gateway’s forwards match
+// v1 routes
 app.use("/v1", techRouter);
 
 app.listen(port, () => {
-  process.stdout.write(`brain-api:${port}`);
+  console.log(`brain-api listening on ${port}`);
 });
