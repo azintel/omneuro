@@ -1,3 +1,5 @@
+import techRouter from "./routes/tech.js";
+import cors from "cors";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +8,9 @@ import fs from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+app.use(express.json({ limit: "5mb" }));
+app.use("/api/tech", techRouter);
+app.use(cors());
 
 app.use(express.json());
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

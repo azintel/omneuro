@@ -1,39 +1,6 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Tech Portal</title>
-<body style="font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width:720px; margin:24px auto; padding:0 12px;">
-  <h1>Omneuro Tech Portal</h1>
-  <p>Enter your Tech ID to join chat.</p>
-  <form id="join"><input id="tech_id" placeholder="tech id" required/><button>Join</button></form>
-  <div id="chat" style="display:none;">
-    <div id="log" style="border:1px solid #ddd; height:300px; overflow:auto; padding:8px; margin:12px 0;"></div>
-    <form id="send"><input id="msg" placeholder="type message" required/><button>Send</button></form>
-  </div>
-<script>
-const log = document.getElementById('log');
-function add(text, dir){const p=document.createElement('div');p.textContent=(dir==='in'?'→ ':'← ') + text;log.appendChild(p);log.scrollTop=log.scrollHeight;}
-document.getElementById('join').onsubmit = (e)=>{
-  e.preventDefault();
-  const tech_id = document.getElementById('tech_id').value.trim();
-  if(!tech_id) return;
-  document.getElementById('join').style.display='none';
-  document.getElementById('chat').style.display='block';
-  const es = new EventSource('/v1/stream?tech_id='+encodeURIComponent(tech_id));
-  es.onmessage = (evt)=>{
-    try{const data=JSON.parse(evt.data);(data.items||[]).forEach(it=>add(it.body,'out'));}catch(_){}
-  };
-  window._tech_id = tech_id;
-};
-document.getElementById('send').onsubmit = async (e)=>{
-  e.preventDefault();
-  const v=document.getElementById('msg').value.trim();
-  if(!v) return;
-  document.getElementById('msg').value='';
-  add(v,'in');
-  await fetch('/v1/msg',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone:'local-'+window._tech_id,body:v})});
-};
-</script>
+<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Omneuro Tech Gateway</title>
+<body style="font-family:system-ui;margin:20px">
+  <h1>Omneuro Tech Gateway</h1>
+  <p>Online. Try: <code>/healthz</code> and <code>/api/tech/health</code> (next step).</p>
 </body>
-</html>
