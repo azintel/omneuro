@@ -1,0 +1,42 @@
+
+
+SHELL := /bin/bash
+
+PORT ?= 8092
+BRAIN_API_URL ?= http://localhost:8081
+NAME := tech-gateway
+
+.PHONY: help install build run restart stop logs verify diag deploy
+
+help:
+	@echo "Targets: install build run restart stop logs verify diag deploy"
+
+install:
+	npm ci
+
+build:
+	npm run build
+
+run:
+	PORT=$(PORT) BRAIN_API_URL=$(BRAIN_API_URL) pm2 start dist/server.js --name $(NAME) --update-env || true
+	pm2 save
+
+restart:
+	PORT=$(PORT) BRAIN_API_URL=$(BRAIN_API_URL) pm2 restart $(NAME) --update-env || true
+	pm2 save
+
+stop:
+	pm2 delete $(NAME) || true
+	pm2 save || true
+
+logs:
+	pm2 logs $(NAME) --lines 200
+
+verify:
+	curl -fsS http://localhost:$(PORT)/healthz && echo "healthz OK"
+	curl -fsS http://localhost:$(PORT)/api/tech/health && echo "tech/health OK"
+
+diag:
+	curl -sS "http://localhost:$(PORT)/admin/diag?key=$$DIAG_KEY" || true
+
+deploy: install build restart verify

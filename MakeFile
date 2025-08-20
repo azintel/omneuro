@@ -1,0 +1,49 @@
+SHELL := /bin/bash
+
+# Defaults
+GATEWAY_DIR := apps/tech-gateway
+BRAIN_DIR   := apps/brain-api
+PORT_GATEWAY ?= 8092
+PORT_BRAIN   ?= 8081
+BRAIN_API_URL ?= http://localhost:$(PORT_BRAIN)
+
+.PHONY: help
+help:
+	@echo "Targets:"
+	@echo "  gateway-install | gateway-build | gateway-run | gateway-restart | gateway-stop | gateway-logs | gateway-verify | gateway-deploy"
+	@echo "  brain-install   | brain-build   | brain-run   | brain-restart   | brain-stop   | brain-logs   | brain-verify   | brain-deploy"
+
+.PHONY: gateway-install gateway-build gateway-run gateway-restart gateway-stop gateway-logs gateway-verify gateway-deploy
+gateway-install:
+	cd $(GATEWAY_DIR) && npm ci
+gateway-build:
+	cd $(GATEWAY_DIR) && npm run build
+gateway-run:
+	cd $(GATEWAY_DIR) && PORT=$(PORT_GATEWAY) BRAIN_API_URL=$(BRAIN_API_URL) pm2 start dist/server.js --name tech-gateway --update-env || true && pm2 save
+gateway-restart:
+	cd $(GATEWAY_DIR) && PORT=$(PORT_GATEWAY) BRAIN_API_URL=$(BRAIN_API_URL) pm2 restart tech-gateway --update-env || true && pm2 save
+gateway-stop:
+	pm2 delete tech-gateway || true && pm2 save || true
+gateway-logs:
+	pm2 logs tech-gateway --lines 200
+gateway-verify:
+	curl -fsS http://localhost:$(PORT_GATEWAY)/healthz && echo "gateway healthz OK"
+	curl -fsS http://localhost:$(PORT_GATEWAY)/api/tech/health && echo "gateway tech/health OK"
+gateway-deploy: gateway-install gateway-build gateway-restart gateway-verify
+
+.PHONY: brain-install brain-build brain-run brain-restart brain-stop brain-logs brain-verify brain-deploy
+brain-install:
+	cd $(BRAIN_DIR) && npm ci
+brain-build:
+	cd $(BRAIN_DIR) && npm run build
+brain-run:
+	cd $(BRAIN_DIR) && PORT=$(PORT_BRAIN) pm2 start dist/server.js --name brain-api --update-env || true && pm2 save
+brain-restart:
+	cd $(BRAIN_DIR) && PORT=$(PORT_BRAIN) pm2 restart brain-api --update-env || true && pm2 save
+brain-stop:
+	pm2 delete brain-api || true && pm2 save || true
+brain-logs:
+	pm2 logs brain-api --lines 200
+brain-verify:
+	curl -fsS http://localhost:$(PORT_BRAIN)/healthz && echo "brain healthz OK"
+brain-deploy: brain-install brain-build brain-restart brain-verify
