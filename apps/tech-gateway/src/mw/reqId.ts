@@ -1,14 +1,19 @@
-import { customAlphabet } from "nanoid";
-import { Request, Response, NextFunction } from "express";
+// src/mw/reqId.ts
+import type { Request, Response, NextFunction } from "express";
+import { randomUUID } from "node:crypto";
 
-const nano = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 12);
+export function reqId(req: Request, res: Response, next: NextFunction) {
+  const id =
+    (req.headers["x-request-id"] as string | undefined) ||
+    randomUUID();
 
-export function reqId() {
-  return function (req: Request, res: Response, next: NextFunction) {
-    const incoming = (req.headers["x-request-id"] || "").toString().trim();
-    const id = incoming || "rg_" + nano();
-    (req as any).req_id = id;
-    res.setHeader("x-request-id", id);
-    next();
-  };
+  // propagate to downstream and expose to client
+  req.headers["x-request-id"] = id;
+  res.setHeader("x-request-id", id);
+
+  // convenience for handlers
+  (req as any).reqId = id;
+  next();
 }
+
+export default reqId;
