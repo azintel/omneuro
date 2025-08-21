@@ -25,6 +25,8 @@ app.use((req, res, next) => {
 
 // basic health + diag
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
+app.get("/api/health", (_req, res) => res.json({ ok: true }));     // alias for /api/health
+app.get("/api/tech/health", (_req, res) => res.json({ ok: true })); // alias for /api/tech/health
 app.get("/admin/diag", (req, res) => {
   const key = process.env.DIAG_KEY || "";
   if (key && req.query.key !== key) return res.status(403).json({ error: "forbidden" });

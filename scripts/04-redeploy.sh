@@ -32,17 +32,16 @@ pm2 list
 
 
 echo "=== [REDEPLOY] Health check ==="
-
-# brain-api
 if curl -fs http://localhost:8081/healthz >/dev/null; then
   echo "brain-api health check passed"
 else
   echo "brain-api health check failed"
 fi
 
-# tech-gateway
-if curl -fs http://localhost:8092/api/tech/health >/dev/null; then
-  echo "tech-gateway health check passed"
+if curl -fs http://localhost:8092/healthz >/dev/null \
+   && curl -fs http://localhost:8092/api/health >/dev/null \
+   && curl -fs http://localhost:8092/api/tech/health >/dev/null; then
+  echo "tech-gateway health checks passed"
 else
-  echo "tech-gateway health check failed"
+  echo "tech-gateway health checks failed"
 fi
