@@ -33,18 +33,21 @@ pm2 list
 echo "[DEBUG] Running redeploy script from $(realpath "$0")"
 echo "=== [REDEPLOY] Health check ==="
 
+check_service() {
+  local name=$1
+  local url=$2
+  echo -n "Checking $name $url ... "
+  if curl -4 -fsS --max-time 5 "$url" >/dev/null; then
+    echo "OK"
+  else
+    echo "FAILED"
+  fi
+}
+
 # brain-api
-if curl -fs http://localhost:8081/healthz >/dev/null; then
-  echo "brain-api health check passed"
-else
-  echo "brain-api health check failed"
-fi
+check_service "brain-api" "http://localhost:8081/healthz"
 
 # tech-gateway
-for path in /healthz /api/health /api/tech/health; do
-  if curl -fs "http://localhost:8092$path" >/dev/null; then
-    echo "tech-gateway $path passed"
-  else
-    echo "tech-gateway $path failed"
-  fi
-done
+check_service "tech-gateway" "http://localhost:8092/healthz"
+check_service "tech-gateway" "http://localhost:8092/api/health"
+check_service "tech-gateway" "http://localhost:8092/api/tech/health"
