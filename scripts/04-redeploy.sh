@@ -30,7 +30,7 @@ pm2 save
 echo "=== [REDEPLOY] Verifying processes ==="
 pm2 list
 
-
+echo "[DEBUG] Running redeploy script from $(realpath "$0")"
 echo "=== [REDEPLOY] Health check ==="
 if curl -fs http://localhost:8081/healthz >/dev/null; then
   echo "brain-api health check passed"
