@@ -1,15 +1,17 @@
-# Omneuro Docs
+# omneuro docs
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) – System overview
-- [OPS.md](OPS.md) – Runbook (health, PM2, CW)
-- [CONTRACTS.md](CONTRACTS.md) – API contracts
-- [CHECKLISTS.md](CHECKLISTS.md) – New module checklist
-- [NEXT.md](NEXT.md) – Next actions
-- ADRs: /docs/ADR/
+This folder is the source of truth for how we build, deploy, and operate omneuro.
 
+## Index
+- rules: `docs/rules.md`
+- workflow: `docs/workflow.md`
+- operations overview: `docs/ops/README.md`
+  - deploy scripts & PM2: `docs/ops/deploy.md`
+  - SSM sessions: `docs/ops/ssm.md`
+  - logs (PM2 & CloudWatch): `docs/ops/logs.md`
+  - sanity checks: `docs/ops/sanity.md`
+- service notes
+  - brain-api: `docs/dev/brain-api.md`
+  - tech-gateway: `docs/dev/tech-gateway.md`
 
-How to use this canvas
-	•	Treat this as a living SSOT during sprints; update alongside code.
-	•	When starting a new chat, reference: “Use the Architecture & Ops Pack v0.2 as context.”
-	•	Paste short diffs/commands here; keep long logs in CloudWatch.
-	•	Append ADRs as we decide; link to commits.
+**Prime directive:** every code/infra change that affects behavior must update these docs *in the same PR*.
