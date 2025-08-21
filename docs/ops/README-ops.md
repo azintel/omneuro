@@ -1,3 +1,5 @@
+omneuro/docs/ops/readme-ops.md
+
 # operations overview
 
 - Deployment: `docs/ops/deploy.md`

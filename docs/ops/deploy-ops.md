@@ -1,3 +1,5 @@
+omneuro/docs/ops/deploy-ops.md
+
 # Deploy Workflow (Scripts)
 
 ## Scripts (in repo)

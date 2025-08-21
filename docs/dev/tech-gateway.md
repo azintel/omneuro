@@ -1,3 +1,4 @@
+omneuro/docs/dev/tech-gateway.md
 ```md
 # tech-gateway (service)
 

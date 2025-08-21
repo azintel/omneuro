@@ -1,3 +1,4 @@
+omneuro/docs/ops/sanity.md
 ```md
 # sanity checks (post-deploy)
 
