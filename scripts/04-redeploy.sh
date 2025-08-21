@@ -1,34 +1,36 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "== FULL REDEPLOY START =="
+echo "=== [REDEPLOY] Full cycle ==="
+cd /home/ubuntu/omneuro
 
-# Who/where info
-echo
-echo "==== who/where ===="
-whoami
-hostname
-date -u +"%Y-%m-%dT%H:%M:%S%z"
+# --- Sync repo ---
+echo "=== [REDEPLOY] Git sync ==="
+git fetch --all
+git reset --hard origin/main
 
-# Step 1: Build
-echo
-echo "==== STEP 1: BUILD ===="
-/home/ubuntu/omneuro/scripts/deploy/01-build.sh
+# --- Fetch secrets live ---
+echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
+export GOOGLE_API_KEY=$(aws ssm get-parameter --name "/omneuro/google/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
+export GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/omneuro/google/client_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
+export GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/omneuro/google/client_secret" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
+export OPENAI_API_KEY=$(aws ssm get-parameter --name "/omneuro/openai/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
 
-# Step 2: Restart
-echo
-echo "==== STEP 2: RESTART ===="
-/home/ubuntu/omneuro/scripts/deploy/02-restart.sh
+# --- Build apps ---
+echo "=== [REDEPLOY] Building apps ==="
+cd apps/brain-api && npm ci && npm run build && cd -
+cd apps/tech-gateway && npm ci && npm run build && cd -
 
-# Step 3: Sanity checks
-echo
-echo "==== STEP 3: SANITY ===="
-/home/ubuntu/omneuro/scripts/deploy/03-sanity.sh
+# --- Restart PM2 ---
+echo "=== [REDEPLOY] Restarting PM2 apps ==="
+pm2 restart ecosystem.config.cjs --update-env
+pm2 save
 
-# Step 4: PM2 status
-echo
-echo "==== STEP 4: PM2 STATUS ===="
-pm2 status
+# --- Verify ---
+echo "=== [REDEPLOY] Verifying processes ==="
+pm2 list
+echo "=== [REDEPLOY] Health check ==="
+curl -f http://localhost:3000/health || echo "brain-api health check failed"
+curl -f http://localhost:4000/health || echo "tech-gateway health check failed"
 
-echo
-echo "== FULL REDEPLOY COMPLETE =="
+echo "=== [REDEPLOY] Done ==="
