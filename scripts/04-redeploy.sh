@@ -29,7 +29,20 @@ pm2 save
 # --- Verify ---
 echo "=== [REDEPLOY] Verifying processes ==="
 pm2 list
+
+
 echo "=== [REDEPLOY] Health check ==="
-curl -f http://localhost:8081 || echo "brain-api health check failed"
-curl -f http://localhost:8092 || echo "tech-gateway health check failed"
-echo "=== [REDEPLOY] Done ==="
+
+# brain-api
+if curl -fs http://localhost:8081/healthz >/dev/null; then
+  echo "brain-api health check passed"
+else
+  echo "brain-api health check failed"
+fi
+
+# tech-gateway
+if curl -fs http://localhost:8092/api/tech/health >/dev/null; then
+  echo "tech-gateway health check passed"
+else
+  echo "tech-gateway health check failed"
+fi
