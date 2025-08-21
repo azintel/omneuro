@@ -36,21 +36,38 @@ pm2 list
 echo "[DEBUG] Running redeploy script from $(realpath "$0")"
 echo "=== [REDEPLOY] Health check ==="
 
-check_service() {
-  local name=$1
-  local url=$2
-  echo -n "Checking $name $url ... "
-  if curl -4 -fsS --max-time 5 "$url" >/dev/null; then
-    echo "OK"
-  else
-    echo "FAILED"
-  fi
+# brain-api
+if curl -fs http://localhost:8081/healthz >/dev/null; then
+  echo "brain-api health check passed"
+else
+  echo "brain-api health check failed"
+fi
+
+# helper function for retries
+check_with_retries() {
+  local url=$1
+  local name=$2
+  local retries=3
+  local delay=2
+  local count=0
+
+  until curl -fs "$url" >/dev/null; do
+    count=$((count+1))
+    if [ $count -ge $retries ]; then
+      echo "Checking $name $url ... FAILED after $retries attempts"
+      return 1
+    fi
+    echo "Checking $name $url ... not up yet, retrying in $delay sec"
+    sleep $delay
+  done
+  echo "Checking $name $url ... OK"
+  return 0
 }
 
-# brain-api
-check_service "brain-api" "http://localhost:8081/healthz"
-
-# tech-gateway
-check_service "tech-gateway" "http://localhost:8092/healthz"
-check_service "tech-gateway" "http://localhost:8092/api/health"
-check_service "tech-gateway" "http://localhost:8092/api/tech/health"
+# tech-gateway (only two real routes: /healthz and /api/health)
+if check_with_retries http://localhost:8092/healthz "tech-gateway" \
+   && check_with_retries http://localhost:8092/api/health "tech-gateway"; then
+  echo "tech-gateway health checks passed"
+else
+  echo "tech-gateway health checks failed"
+fi
