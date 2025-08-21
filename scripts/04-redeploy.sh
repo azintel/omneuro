@@ -9,6 +9,9 @@ echo "=== [REDEPLOY] Git sync ==="
 git fetch --all
 git reset --hard origin/main
 
+# Ensure scripts are executable
+chmod +x /home/ubuntu/omneuro/scripts/*.sh || true
+
 # --- Fetch secrets live ---
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
 export GOOGLE_API_KEY=$(aws ssm get-parameter --name "/omneuro/google/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
