@@ -4,3 +4,5 @@ omneuro/docs/ops/ssm.md
 ## Start
 ```bash
 aws ssm start-session --region us-east-2 --target i-011c79fffa7af9e27
+
+sudo chmod +x /home/ubuntu/omneuro/scripts/*.sh
