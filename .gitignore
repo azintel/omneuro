@@ -11,3 +11,4 @@ apps/tech-gateway/*.db
 AWSCLIV2.pkg
 .secrets/
 apps/tech-gateway/dist/
+apps/**/dist/
