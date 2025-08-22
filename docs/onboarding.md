@@ -1,117 +1,157 @@
-# Omneuro Developer Onboarding
+# ONBOARDING.md
 
-Welcome to the **Omneuro Project**.  
-This document gets you from **zero → building → deploying → testing** in about 10 minutes.  
+## Welcome to Omneuro
 
----
+This guide is for **new humans and AI agents** joining the Omneuro project.  
+It captures everything we’ve learned — the wins, the mistakes, the scars — so you can **start strong, avoid old pitfalls, and move fast without breaking trust.**
 
-## 1. Clone & Setup
-
-git clone https://github.com/azintel/omneuro.git  
-cd omneuro  
-
-We use Node.js + npm. Install dependencies per service when working locally:
-
-cd apps/brain-api && npm i  
-cd ../tech-gateway && npm i  
-
-> 🔑 Always `npm i` after pulling code changes.  
+If you read only one document: read this, then follow the cross-references.  
 
 ---
 
-## 2. Scripts Overview
+## 1. Philosophy
 
-All automation lives in `scripts/deploy/`:
-
-- **01-build.sh** → cleans, installs, builds both services.  
-- **02-restart.sh** → restarts services under `pm2`.  
-- **03-sanity.sh** → runs health checks to verify system is alive.  
-
-Usage (from repo root):
-
-./scripts/deploy/01-build.sh  
-./scripts/deploy/02-restart.sh  
-./scripts/deploy/03-sanity.sh  
+- **Spartan, not messy** → Simple rules, consistently applied.  
+- **Symmetry** → Humans and AI follow the same contracts.  
+- **Context is king** → Everything you need is documented.  
+- **Ops are sacred** → Deploys and debugging follow rituals, not improvisation.  
+- **Progress over chaos** → Avoid “startup dev” thrash. Build like pros.  
 
 ---
 
-## 3. Services Overview
+## 2. Your First Day
 
-### brain-api
-- Express API for backend logic.  
-- Runs on **port 8081** under `pm2`.  
-- Health check: `GET http://localhost:8081/healthz`.
+### Step 1: Read the Core Docs
+- `README-ops.md` → Index + orientation.  
+- `ARCHITECTURE.md` → What the system is.  
+- `OPS.md` → How we work.  
+- `RULES.md` → Guardrails.  
+- `RUNBOOK.md` → What to do when it breaks.  
+- `OBSERVABILITY.md` → How we see what’s happening.  
+- `CHECKLISTS.md` → Ritualized flows (deploy, PR, etc).  
+- `CONTRACTS.md` → What we promise each other.  
 
-### tech-gateway
-- Gateway/proxy layer.  
-- Runs on **port 8092** under `pm2`.  
-- Health check: `GET http://localhost:8092/api/tech/health`.
+### Step 2: Run Local Services
+- Clone repo.  
+- Start `brain-api` and `tech-gateway`.  
+- Use health endpoints to confirm they’re alive:  
+  - Brain API → `http://localhost:8081/healthz`  
+  - Tech Gateway → `http://localhost:8092/api/tech/health`  
 
-Both services are restarted and wired together by the deploy scripts.  
-
----
-
-## 4. Deployment Flow
-
-1. Pull latest code  
-   git pull origin main  
-
-2. Build  
-   ./scripts/deploy/01-build.sh  
-
-3. Restart services  
-   ./scripts/deploy/02-restart.sh  
-
-4. Verify  
-   ./scripts/deploy/03-sanity.sh  
-
-If all checks pass → you’re good.  
+### Step 3: Run the Health Script
+- `deploy-ops.sh` has built-in retry loops and green-check verification.  
+- Never merge without seeing all green.  
 
 ---
 
-## 5. Logs & Debugging
+## 3. Tools You’ll Use
 
-View logs with:  
-pm2 logs brain-api  
-pm2 logs tech-gateway  
-
-Stop/start services individually:  
-pm2 restart brain-api  
-pm2 restart tech-gateway  
+- **GitHub** → Source control + Actions pipeline.  
+- **AWS (SSM + CloudWatch)** → Secrets + logs.  
+- **curl** → First line of testing.  
+- **Structured JSON logs** → Debugging clarity.  
+- **ADR files** (`adr/`) → Design history and decisions.  
 
 ---
 
-## 6. Development Rules
+## 4. Golden Rules (from RULES.md)
 
-- ✅ Always stage, commit, and push (`git add . && git commit -m "..." && git push`).  
-- ✅ Always update docs when you update code.  
-- ✅ Always run sanity checks after deploy.  
-- ❌ Never use `~` in scripts or paths — use `$HOME`.  
-- ❌ Never hack around logs — always use `pm2 logs` or structured logging.  
-
-See `docs/rules.md` for the full list.  
-
----
-
-## 7. First Run Quickstart
-
-./scripts/deploy/01-build.sh  
-./scripts/deploy/02-restart.sh  
-./scripts/deploy/03-sanity.sh  
-
-Expected output:  
-- Brain API responds to `/healthz`.  
-- Gateway responds to `/api/tech/health`.  
-- Messages flow end-to-end via `/api/tech/message`.  
+1. No placeholders. Ever.  
+2. Health checks must be green before merging.  
+3. Debug logs ≠ production logs (keep them separate).  
+4. Schema validation is mandatory pre-merge.  
+5. Contracts define truth, not memory.  
+6. Always update docs when workflows change.  
+7. Rollbacks are automatic — don’t fight them.  
+8. Use retries for resilience.  
+9. Humans and AI communicate in full sentences, with full context.  
+10. No clever hacks that bypass rules.  
 
 ---
 
-## 8. Next Steps
+## 5. Common Pitfalls (Learn From Our Pain)
 
-- Add features in `apps/brain-api` or `apps/tech-gateway`.  
-- Update tests, docs, and scripts if needed.  
-- Commit and push regularly.  
+### AWS / SSM
+- Wrong user permissions killed hours.  
+- Contract: use IAM roles, not static keys.  
+
+### Logging
+- Debug noise drowned real issues.  
+- Fix: structured JSON, log levels, separation.  
+
+### Deploys
+- GitHub vs manual deploys caused drift.  
+- Fix: single pipeline, retries built-in, auto rollback.  
+
+### Health Checks
+- We wasted cycles on wrong endpoints.  
+- Fix: 1 canonical health endpoint per service.  
+
+### Human/AI Drift
+- Copy-paste without checking context = chaos.  
+- Fix: confirm intent before executing.  
 
 ---
 
-✨ Congratulations — you’re now a co-developer. 🚀
+## 6. Day 2–7: Deep Dive
+
+- **Study ADRs** (`adr/`)  
+  See why we made certain choices.  
+
+- **Trace Logs in CloudWatch**  
+  Learn our JSON structure.  
+
+- **Follow a Full Deploy Cycle**  
+  Run `git push`, watch GitHub Actions, validate with health script.  
+
+- **Break and Fix Something in Sandbox**  
+  Use `RUNBOOK.md` to recover.  
+
+---
+
+## 7. Lessons Baked Into Culture
+
+- **Retries are non-negotiable.**  
+- **Observability isn’t optional.**  
+- **Schemas prevent drift.**  
+- **Docs are part of the product.**  
+- **Every frustration became a rule.**  
+- **We never “just wing it” anymore.**  
+
+---
+
+## 8. How to Contribute
+
+- **PRs must include:**  
+  - Schema validation.  
+  - Updated docs (if workflow changed).  
+  - Passing health checks.  
+
+- **AI Contributions**  
+  - Never truncate due to token limits without warning.  
+  - Never overwrite existing info; append and cross-reference.  
+  - Always assume your output will be executed as-is.  
+
+---
+
+## 9. Cross-References
+
+- `OPS.md` → Rituals for daily dev + deploy.  
+- `RUNBOOK.md` → Break/fix playbook.  
+- `OBSERVABILITY.md` → Logging + monitoring.  
+- `CHECKLISTS.md` → Step-by-step flows.  
+- `CONTRACTS.md` → System promises.  
+
+---
+
+## 10. Final Note
+
+Onboarding isn’t just about “reading docs.”  
+It’s about absorbing the discipline we earned by **burning cycles, losing time, and clawing our way to stability.**  
+
+If you follow this guide and the cross-references:  
+- You won’t repeat our mistakes.  
+- You’ll be productive on Day 1.  
+- And Omneuro will continue to move forward like a professional team.  
+
+Welcome aboard. 🚀

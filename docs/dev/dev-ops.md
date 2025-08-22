@@ -78,4 +78,3 @@ This document captures the essential principles, workflows, and lessons learned 
 - `ssm.md` → secrets and environment variables
 - `sanity.md` → periodic sanity checks
 - `RUNBOOK.md` → incident handling
-⸻
