@@ -1,6 +1,136 @@
-<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Omneuro Tech Gateway</title>
-<body style="font-family:system-ui;margin:20px">
-  <h1>Omneuro Tech Gateway</h1>
-  <p>Online. Try: <code>/healthz</code> and <code>/api/tech/health</code> (next step).</p>
+<!-- apps/tech-gateway/src/public/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Omneuro • Repairbot Console</title>
+  <style>
+    :root{--bg:#0b0f16;--panel:#0f1622;--border:#1f2633;--text:#e6edf3;--muted:#9fb0c3;--accent:#1e90ff}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif}
+    header{position:sticky;top:0;background:rgba(11,15,22,.8);backdrop-filter:blur(6px);padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+    header h1{font-size:16px;margin:0}
+    header .tag{font-size:12px;color:var(--muted)}
+    header .pill{display:inline-block;padding:3px 8px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:12px}
+    .ok{color:#8df58d}.err{color:#ff8d8d}
+    main{max-width:980px;margin:0 auto;padding:18px}
+    .grid{display:grid;grid-template-columns:1fr 320px;gap:16px}
+    @media (max-width: 900px){.grid{grid-template-columns:1fr}}
+    .card{border:1px solid var(--border);background:var(--panel);border-radius:12px}
+    .chat{display:flex;flex-direction:column;height:calc(100vh - 120px)}
+    .log{padding:14px;height:100%;overflow:auto;scroll-behavior:smooth}
+    .msg{border:1px solid var(--border);background:#0e1420;border-radius:10px;padding:10px 12px;margin:8px 0;white-space:pre-wrap}
+    .msg .role{font-size:12px;color:var(--muted);margin-bottom:4px}
+    .input{border-top:1px solid var(--border);padding:12px;display:flex;gap:10px;flex-wrap:wrap}
+    .input input[type="text"]{flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:#0e1420;color:var(--text)}
+    .input button{padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:#132238;color:var(--text);cursor:pointer}
+    .input button:disabled{opacity:.6;cursor:not-allowed}
+    .kv{padding:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:120px 1fr;gap:10px}
+    .kv div{font-size:13px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Omneuro • Repairbot</h1>
+    <span class="tag">tech.juicejunkiez.com</span>
+    <span id="lock-pill" class="pill err">locked</span>
+  </header>
+  <main>
+    <div class="grid">
+      <section class="card chat">
+        <div id="log" class="log"></div>
+        <form id="f" class="input" autocomplete="off">
+          <input id="q" type="text" placeholder="Ask Repairbot (access code required)" />
+          <button id="send" type="submit">Send</button>
+        </form>
+      </section>
+      <aside class="card">
+        <div style="padding:12px 12px 0 12px;"><b>Quick Actions</b></div>
+        <div class="kv">
+          <div>Health</div><div id="health">checking…</div>
+          <div>Gateway</div><div><code>/api/health</code></div>
+          <div>Chat API</div><div><code>/api/chat</code></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const log = document.getElementById('log');
+    const f = document.getElementById('f');
+    const q = document.getElementById('q');
+    const send = document.getElementById('send');
+    const lockPill = document.getElementById('lock-pill');
+    const messages = [{ role: 'system', content: 'You are Repairbot for Omneuro EV repairs.' }];
+
+    function add(role, content){
+      const div = document.createElement('div');
+      div.className = 'msg';
+      const r = document.createElement('div');
+      r.className = 'role';
+      r.textContent = role.toUpperCase();
+      const c = document.createElement('div');
+      c.textContent = content;
+      div.appendChild(r); div.appendChild(c);
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function getToken() {
+      let t = localStorage.getItem('ACCESS_TOKEN') || '';
+      if (!t) {
+        t = prompt('Enter access code to use Repairbot:') || '';
+        if (t) localStorage.setItem('ACCESS_TOKEN', t);
+      }
+      lockPill.textContent = t ? 'unlocked' : 'locked';
+      lockPill.className = 'pill ' + (t ? 'ok' : 'err');
+      return t;
+    }
+
+    async function ping() {
+      try {
+        const r = await fetch('/api/health');
+        document.getElementById('health').innerHTML = r.ok ? '<span class="ok">OK</span>' : '<span class="err">DOWN</span>';
+      } catch {
+        document.getElementById('health').innerHTML = '<span class="err">DOWN</span>';
+      }
+    }
+
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = q.value.trim();
+      if (!text) return;
+      const token = getToken();
+      if (!token) { add('system', 'Missing access code.'); return; }
+
+      q.value=''; send.disabled=true;
+      messages.push({ role: 'user', content: text });
+      add('user', text);
+
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Access-Token': token },
+          body: JSON.stringify({ messages })
+        });
+        if (!resp.ok) {
+          const t = await resp.text();
+          add('system', 'Error: ' + t);
+        } else {
+          const { reply } = await resp.json();
+          messages.push({ role: 'assistant', content: reply });
+          add('assistant', reply);
+        }
+      } catch (e2) {
+        add('system', 'Network error: ' + (e2?.message || e2));
+      } finally {
+        send.disabled=false;
+      }
+    });
+
+    // boot
+    getToken(); ping(); setInterval(ping, 15000);
+  </script>
 </body>
+</html>

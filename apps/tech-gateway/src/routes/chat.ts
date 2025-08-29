@@ -1,9 +1,10 @@
 // apps/tech-gateway/src/routes/chat.ts
 //
-// Minimal Repairbot chat route that fetches the OpenAI key securely from SSM.
-// - Requires: ../lib/ssm (getOpenAIKey)
-// - Node 18+ (uses global fetch)
-// - Non-streaming for v1; we can add SSE later.
+// Minimal Repairbot chat route with access-token guard.
+// - Requires header: X-Access-Token: <your code>
+// - Access code is read from env TECH_GATEWAY_ACCESS_TOKEN (set via PM2 env or SSM if you prefer).
+// - Uses ../lib/ssm (getOpenAIKey) to fetch OpenAI key from AWS SSM.
+// - Non-streaming for v1.
 
 import express from "express";
 import type { Request, Response } from "express";
@@ -15,6 +16,7 @@ type Msg = { role: "system" | "user" | "assistant"; content: string };
 
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || "https://api.openai.com/v1";
 const OPENAI_MODEL = process.env.OMNEURO_OPENAI_MODEL || "gpt-4o-mini";
+const ACCESS_TOKEN = process.env.TECH_GATEWAY_ACCESS_TOKEN || ""; // set via PM2 env
 
 const SYSTEM_PROMPT = `
 You are Repairbot, the senior service advisor for Omneuro's EV repair operations.
@@ -23,6 +25,16 @@ You are Repairbot, the senior service advisor for Omneuro's EV repair operations
 - If a task requires job data or actions, say exactly which action you would perform (e.g. "lookup_job VIN=..."), and we'll call internal tools.
 - Never expose secrets. If unsure, ask for the specific field needed.
 `.trim();
+
+function requireAccess(req: Request): void {
+  if (!ACCESS_TOKEN) return; // if unset, do not block (can tighten later)
+  const header = (req.header("x-access-token") || "").trim();
+  if (header !== ACCESS_TOKEN) {
+    const err: any = new Error("unauthorized");
+    err.status = 401;
+    throw err;
+  }
+}
 
 async function callOpenAI(messages: Msg[]): Promise<string> {
   const OPENAI_API_KEY = await getOpenAIKey(); // fetched from SSM, cached in-memory
@@ -71,14 +83,20 @@ input[type="text"]{width:100%;padding:12px 14px;border-radius:12px;border:1px so
 button{margin-top:8px;padding:10px 14px;border-radius:10px;border:1px solid #2a3a55;background:#132238;color:#e6edf3;cursor:pointer}
 button:disabled{opacity:.6;cursor:not-allowed}
 .small{font-size:12px;opacity:.6;margin-top:6px}
+.pill{display:inline-block;padding:3px 8px;border:1px solid #1f2633;border-radius:999px;color:#9fb0c3;font-size:12px}
+.ok{color:#8df58d}.err{color:#ff8d8d}
 </style>
 </head>
 <body>
-<header><h1>Omneuro Repairbot</h1><span class="small">tech.juicejunkiez.com</span></header>
+<header>
+  <h1>Omneuro Repairbot</h1>
+  <span class="small">tech.juicejunkiez.com</span>
+  <span class="pill" id="status">locked</span>
+</header>
 <main>
   <div id="log"></div>
   <form id="f">
-    <input id="q" type="text" placeholder="Ask Repairbot (e.g., \`Schedule drop-off for VIN ...\`)" autocomplete="off" />
+    <input id="q" type="text" placeholder="Ask Repairbot (access code required)" autocomplete="off" />
     <button id="send" type="submit">Send</button>
     <div class="small">Internal use only. Avoid PHI/PII in prompts.</div>
   </form>
@@ -88,6 +106,7 @@ const log = document.getElementById('log');
 const f = document.getElementById('f');
 const q = document.getElementById('q');
 const send = document.getElementById('send');
+const statusEl = document.getElementById('status');
 const messages = [];
 
 function add(role, content){
@@ -103,10 +122,24 @@ function add(role, content){
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 }
 
+function getToken() {
+  let t = localStorage.getItem('ACCESS_TOKEN') || '';
+  if (!t) {
+    t = prompt('Enter access code to use Repairbot:') || '';
+    if (t) localStorage.setItem('ACCESS_TOKEN', t);
+  }
+  statusEl.textContent = t ? 'unlocked' : 'locked';
+  statusEl.className = 'pill ' + (t ? 'ok' : 'err');
+  return t;
+}
+
 f.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = q.value.trim();
   if (!text) return;
+  const token = getToken();
+  if (!token) { add('system', 'Missing access code.'); return; }
+
   q.value = ''; send.disabled = true;
   messages.push({ role: 'user', content: text });
   add('user', text);
@@ -114,7 +147,7 @@ f.addEventListener('submit', async (e) => {
   try {
     const resp = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Access-Token': token },
       body: JSON.stringify({ messages })
     });
     if (!resp.ok) {
@@ -132,9 +165,14 @@ f.addEventListener('submit', async (e) => {
     send.disabled = false;
   }
 });
+
+// boot
+add('system', 'Repairbot ready. Access code required.', 'system');
+getToken();
 </script>
 </body>
-</html>`;
+</html>
+`;
 
 // GET /api/chat (embedded HTML UI)
 router.get("/chat", (_req: Request, res: Response) => {
@@ -145,13 +183,16 @@ router.get("/chat", (_req: Request, res: Response) => {
 // POST /api/chat { messages: Msg[] }
 router.post("/chat", express.json(), async (req: Request, res: Response) => {
   try {
+    requireAccess(req); // <-- block spending without the code
     const userMsgs = (req.body?.messages || []) as Msg[];
     const messages: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }, ...userMsgs];
     const reply = await callOpenAI(messages);
     res.status(200).json({ reply });
   } catch (err: any) {
+    const status = err?.status || 500;
+    const msg = status === 401 ? "unauthorized" : "chat error";
     console.error("[chat] error:", err?.message || err);
-    res.status(500).send("chat error");
+    res.status(status).send(msg);
   }
 });
 
