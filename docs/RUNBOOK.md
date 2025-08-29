@@ -1,7 +1,5 @@
 # RUNBOOK.md  
 
-# RUNBOOK.md  
-
 ## Purpose  
 This runbook documents **step-by-step recovery actions** for every recurring issue encountered during development, deployment, or operations of Omneuro.  
 It is the "break glass" manual for humans and AI when something fails.  
@@ -22,14 +20,18 @@ Cross-references point to `OPS.md`, `RULES.md`, `CHECKLISTS.md`, and `OBSERVABIL
 - **Symptom**: `Permission denied` on `redeploy.sh`.  
 - **Diagnosis**: File not marked executable, or wrong user context.  
 - **Fix**:  
-  - Mark script executable: `chmod +x ./scripts/04-redeploy.sh`.  
-  - Ensure you are running as `ubuntu` user with `sudo`:  
+  - Mark script executable:  
     ```bash
-    sudo -i -u ubuntu
-    cd ~/omneuro
-    ./scripts/04-redeploy.sh
+    chmod +x ./scripts/04-redeploy.sh
     ```  
-- **Prevention**: Deploy script now self-applies `chmod`. Rule added to `RULES.md`. Always confirm `ubuntu` context in `CHECKLISTS.md`.  
+  - Ensure you are running as `ubuntu` inside the canonical repo path:  
+    ```bash
+    sudo -u ubuntu -- bash -lc '
+    cd /home/ubuntu/omneuro
+    ./scripts/04-redeploy.sh
+    '
+    ```  
+- **Prevention**: Deploy script now self-applies `chmod`. Rule added to `RULES.md`. Always confirm `ubuntu` context and `/home/ubuntu/omneuro` path in `CHECKLISTS.md`.  
 
 ---
 
@@ -37,8 +39,8 @@ Cross-references point to `OPS.md`, `RULES.md`, `CHECKLISTS.md`, and `OBSERVABIL
 - **Symptom**: `/healthz` failed, `/api/health` failed, `/api/tech/health` worked.  
 - **Diagnosis**: Service only exposes two valid endpoints, not three.  
 - **Fix**:  
-- Update `redeploy.sh` health check logic to test only `/healthz` and `/api/tech/health`.  
-- Add retry logic with backoff.  
+  - Update `redeploy.sh` health check logic to test only `/healthz` and `/api/tech/health`.  
+  - Add retry logic with backoff.  
 - **Prevention**: All new services must document canonical health endpoints in `OBSERVABILITY.md`.  
 
 ---
@@ -47,17 +49,18 @@ Cross-references point to `OPS.md`, `RULES.md`, `CHECKLISTS.md`, and `OBSERVABIL
 - **Symptom**: SSM or AWS commands fail (`AccessDenied`).  
 - **Diagnosis**: Wrong IAM role or expired session token.  
 - **Fix**:  
-Validate role and region. Refresh credentials.  
+  - Validate role and region.  
+  - Refresh credentials.  
 - **Prevention**: IAM validation step added to pre-deploy checklist.  
 
 ---
 
 ### 4. Phantom Endpoints / Wrong Routes  
-- **Symptom**: cURL returns `404` or `503` despite code changes.  
+- **Symptom**: `curl` returns `404` or `503` despite code changes.  
 - **Diagnosis**: Endpoint doesn’t exist in service, or route changed without doc update.  
 - **Fix**:  
-- Confirm routes in service code.  
-- Update `OBSERVABILITY.md` with real endpoints.  
+  - Confirm routes in service code.  
+  - Update `OBSERVABILITY.md` with real endpoints.  
 - **Prevention**: Contract-first discipline in `SCHEMA.md`.  
 
 ---
@@ -66,9 +69,9 @@ Validate role and region. Refresh credentials.
 - **Symptom**: Repeated testing with no change in results.  
 - **Diagnosis**: Debugging the wrong layer (logs missing or unclear).  
 - **Fix**:  
-- Stop after 3 failed cycles.  
-- Insert logs at boundaries.  
-- Compare local logs vs CloudWatch.  
+  - Stop after 3 failed cycles.  
+  - Insert logs at boundaries.  
+  - Compare local logs vs CloudWatch.  
 - **Prevention**: “Logs before code” enforced in `RULES.md`.  
 
 ---
@@ -77,8 +80,8 @@ Validate role and region. Refresh credentials.
 - **Symptom**: No logs appear in CloudWatch after deploy.  
 - **Diagnosis**: Wrong log group name or misconfigured IAM.  
 - **Fix**:  
-- Verify log group in Terraform or CDK.  
-- Validate `awslogs-group` in task definition.  
+  - Verify log group in Terraform or CDK.  
+  - Validate `awslogs-group` in task definition.  
 - **Prevention**: Log group names documented in `OBSERVABILITY.md`.  
 
 ---
@@ -87,9 +90,9 @@ Validate role and region. Refresh credentials.
 - **Symptom**: SSM agent fails or parameters can’t be fetched.  
 - **Diagnosis**: Misconfigured policies or wrong region.  
 - **Fix**:  
-- Check SSM agent status.  
-- Validate `ssm:GetParameter` IAM permission.  
-- Ensure parameters exist in region.  
+  - Check SSM agent status.  
+  - Validate `ssm:GetParameter` IAM permission.  
+  - Ensure parameters exist in region.  
 - **Prevention**: SSM procedures documented in `ssm.md`.  
 
 ---
@@ -98,8 +101,8 @@ Validate role and region. Refresh credentials.
 - **Symptom**: `.secrets` wiped after reset.  
 - **Diagnosis**: Not excluded properly from Git.  
 - **Fix**:  
-- Recreate `.secrets`.  
-- Add `.secrets/` to `.gitignore`.  
+  - Recreate `.secrets`.  
+  - Add `.secrets/` to `.gitignore`.  
 - **Prevention**: Secrets handling documented in `OPS.md`.  
 
 ---
@@ -108,17 +111,17 @@ Validate role and region. Refresh credentials.
 - **Symptom**: AI suggests code that doesn’t exist; human executes wrong step.  
 - **Diagnosis**: Context misaligned due to noise or stale memory.  
 - **Fix**:  
-- Re-sync by reloading canonical docs (`README-ops.md`, `RULES.md`).  
+  - Re-sync by reloading canonical docs (`README-ops.md`, `RULES.md`).  
 - **Prevention**: Debug chatter kept out of project docs. Retro discipline enforced.  
 
 ---
 
 ### 10. Cloud Deployment Failures (503)  
 - **Symptom**: `503 Service Unavailable` during redeploy.  
-- **Diagnosis**: ECS service not yet healthy.  
+- **Diagnosis**: Service not yet healthy.  
 - **Fix**:  
-- Add retry/backoff logic to health checks.  
-- Verify task logs in CloudWatch.  
+  - Add retry/backoff logic to health checks.  
+  - Verify task logs in CloudWatch.  
 - **Prevention**: Health checks wait for service stabilization.  
 
 ---
@@ -139,7 +142,7 @@ Validate role and region. Refresh credentials.
 - **Local dev failure** → Check `sanity.md` → escalate to logs.  
 - **AWS failure** → Check IAM roles and SSM parameters.  
 - **Persistent deploy failure** → Escalate to ADR review.  
-- **Unclear system state** → Force redeploy with `./redeploy.sh`.  
+- **Unclear system state** → Force redeploy from `/home/ubuntu/omneuro` using documented scripts.  
 
 ---
 

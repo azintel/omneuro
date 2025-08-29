@@ -13,43 +13,33 @@ Everything here was written in blood, sweat, and failed `curl` checks.
 - **Health-first.** If health checks fail, deploy halts.  
 - **Self-healing.** Scripts add retries and permissions fixes automatically.  
 - **Consistency.** Every deploy follows the same steps across services.  
-- **Correct user context.** All commands must be executed as the `ubuntu` user with `sudo`.  
+- **Correct user + path.** All commands must be run as `ubuntu` using `sudo -u ubuntu -- bash -lc '…'` in SSM.  
+- **Canonical repo directory:** `/home/ubuntu/omneuro`.
 
 ---
 
-### 2. Redeploy Script (`redeploy.sh` / `04-redeploy.sh`)
-
-Our canonical redeploy script is now stable and green across the board.  
+### 2. Redeploy Script (`04-redeploy.sh`)
 
 Key features:
 
-1. **Git pull latest code**
-   - Always pulls fresh before redeploy.
-   - Immediately runs `chmod +x` to ensure executables are runnable (prevents silent fails).
+1. **Git pull latest code**  
+   - Always pulls fresh before redeploy.  
+   - Immediately runs `chmod +x` to ensure executables are runnable (prevents silent fails).  
 
-2. **Service restarts**
-   - Stops old processes cleanly.
-   - Starts fresh containers/services.
+2. **Service restarts**  
+   - Stops old processes cleanly.  
+   - Starts fresh services (PM2/system).  
 
-3. **Health checks**
-   - Retries up to 5 times with backoff.
+3. **Health checks**  
+   - Retries up to 5 times with backoff.  
    - Only two tech-gateway routes tested:  
      - `/api/tech/health` ✅  
      - `/healthz` ✅  
    - No phantom endpoints tested.  
 
-4. **Fail early**
-   - If any check fails after retries, script exits non-zero.
+4. **Fail early**  
+   - If any check fails after retries, script exits non-zero.  
    - Protects us from deploying silently broken code.  
-
-5. **Run as ubuntu**
-   - When connecting via SSM, the session defaults to `ssm-user`.  
-   - Switch to `ubuntu` before redeploy:  
-     ```bash
-     sudo -i -u ubuntu
-     cd ~/omneuro
-     ./scripts/04-redeploy.sh
-     ```  
 
 ---
 
@@ -67,33 +57,76 @@ Key features:
       sleep 2
     fi
   done
-  ```  
-
----
-
-### 4. SSM Workflow
-
-- Start session:
-  ```bash
-  aws ssm start-session --region us-east-2 --target i-011c79fffa7af9e27
-  ```
-- Switch to ubuntu:
-  ```bash
-  sudo -i -u ubuntu
-  ```
-- Navigate and redeploy:
-  ```bash
-  cd ~/omneuro
-  ./scripts/04-redeploy.sh
   ```
 
 ---
 
-### 5. Cross-References
+### 4. SSM Workflow (from workstation)
 
-- `OPS.md` → System-wide ops overview.  
-- `CHECKLISTS.md` → Pre-deploy and post-deploy safety steps.  
-- `RUNBOOK.md` → Recovery procedures if redeploy fails.  
-- `OBSERVABILITY.md` → Monitoring and metrics after redeploy.  
+```bash
+aws ssm start-session --region us-east-2 --target i-011c79fffa7af9e27
+```
+
+Then inside SSM, redeploy as ubuntu:
+
+```bash
+sudo -u ubuntu -- bash -lc '
+set -euo pipefail
+cd /home/ubuntu/omneuro
+git fetch --all
+git checkout main
+git pull --ff-only
+chmod +x scripts/*.sh
+./scripts/04-redeploy.sh
+curl -fsS http://127.0.0.1:8081/healthz
+curl -fsS http://127.0.0.1:8092/healthz
+curl -fsS https://tech.juicejunkiez.com/healthz
+curl -fsS https://tech.juicejunkiez.com/api/tech/health
+'
+```
 
 ---
+
+### 5. Handling Unstaged Changes
+
+**Inspect:**
+```bash
+sudo -u ubuntu -- bash -lc '
+cd /home/ubuntu/omneuro
+git status -s
+git --no-pager diff --name-only
+'
+```
+
+**Stash then redeploy:**
+```bash
+sudo -u ubuntu -- bash -lc '
+cd /home/ubuntu/omneuro
+git stash push -m "server-pre-redeploy-$(date +%F_%H%M)"
+git fetch --all
+git pull --ff-only
+chmod +x scripts/*.sh
+./scripts/04-redeploy.sh
+'
+```
+
+**Hard reset then redeploy:**
+```bash
+sudo -u ubuntu -- bash -lc '
+cd /home/ubuntu/omneuro
+mkdir -p "/home/ubuntu/_backup_scripts_$(date +%F_%H%M)" && cp scripts/*.sh "/home/ubuntu/_backup_scripts_$(date +%F_%H%M)/" || true
+git fetch origin main
+git reset --hard origin/main
+chmod +x scripts/*.sh
+./scripts/04-redeploy.sh
+'
+```
+
+---
+
+### 6. Cross-References
+
+- `OPS.md` → environment overview, repo path, user discipline  
+- `CHECKLISTS.md` → pre-/post-deploy steps  
+- `RUNBOOK.md` → failure recovery playbooks  
+- `OBSERVABILITY.md` → logs/metrics standards  

@@ -11,14 +11,15 @@ If something is missing, update this file. If something repeats across projects,
 
 ## 1. Pre-Deploy Checklist
 
+- [ ] **User context:** Run as `ubuntu` (SSM: `sudo -u ubuntu -- bash -lc '…'`).  
+- [ ] **Repo path:** All commands inside `/home/ubuntu/omneuro`.  
 - [ ] Pull latest `main` branch.  
 - [ ] Verify `.secrets/` is intact and ignored in Git.  
-- [ ] Run `chmod +x redeploy.sh` (script should self-fix).  
+- [ ] Run `chmod +x scripts/*.sh`.  
 - [ ] Validate AWS identity: `aws sts get-caller-identity`.  
 - [ ] Confirm AWS region matches project defaults.  
 - [ ] Ensure SSM agent is running on all target instances.  
 - [ ] Validate fresh tokens/credentials.  
-- [ ] Confirm you are running as `ubuntu` user (use `sudo -i -u ubuntu` if needed).  
 - [ ] Run unit tests and integration tests locally.  
 - [ ] Run schema contract validation (`SCHEMA.md` alignment).  
 - [ ] Push code and docs updates together (atomic commit).  
@@ -27,15 +28,19 @@ If something is missing, update this file. If something repeats across projects,
 
 ## 2. Deploy Checklist
 
-- [ ] Execute `./redeploy.sh` or `./scripts/04-redeploy.sh` as `ubuntu`.  
+- [ ] Execute redeploy:
+  ```bash
+  sudo -u ubuntu -- bash -lc '
+  set -euo pipefail
+  cd /home/ubuntu/omneuro
+  ./scripts/04-redeploy.sh
+  '
+  ```
 - [ ] Confirm script retries health checks with backoff.  
-- [ ] Validate ECS task stabilization.  
-- [ ] Verify services register healthy in CloudWatch.  
-- [ ] Curl each health endpoint manually:
-  - [ ] Gateway: `/health`
-  - [ ] Service 1: `/ping`
-  - [ ] Service 2: `/ready`
-  - [ ] Any others as documented in `tech-gateway.md`.  
+- [ ] Validate ECS/PM2 processes restarted and healthy.  
+- [ ] Verify health endpoints manually:
+  - [ ] brain-api → `/healthz`
+  - [ ] tech-gateway → `/healthz`, `/api/tech/health`
 - [ ] Check CloudWatch logs for each service (no silent failures).  
 - [ ] Post-deploy retro: capture any issues in `RUNBOOK.md`.  
 
@@ -107,6 +112,14 @@ When something fails:
 - [ ] No startup chaos: move professionally.  
 - [ ] Communicate respectfully, leave rope not threats.  
 - [ ] End every sprint with retro + distilled rules.  
+
+---
+
+## 9. Non-Negotiables (Added for clarity)
+
+- **Run as `ubuntu`.** Always prefix with `sudo -u ubuntu -- bash -lc '…'` in SSM.  
+- **Use `/home/ubuntu/omneuro`.** Do not run from ad-hoc directories.  
+- **Docs with code.** No deploy without updated docs and contracts.  
 
 ---
 

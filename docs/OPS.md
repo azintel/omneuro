@@ -7,76 +7,86 @@ It is designed to prevent context loss: all essential non-secret infrastructure 
 
 ---
 
-### 1. Instance & Network
+### 1. Instance, User & Repo
 
-- **EC2 Instance ID:** `i-011c79fffa7af9e27`
-- **Elastic IP:** (document with `aws ec2 describe-addresses`)
-- **VPC:** `vpc-026919db421d655fd`
-- **Subnet:** `subnet-023d240d009ed3787`
-- **Security Groups:**  
-  - `sg-0de027ba0663a9c57` (ingress: 80/443 from 0.0.0.0/0; 22 from restricted sources)
-
-> **Note:** All operational commands on this instance must be executed as the `ubuntu` user with `sudo`.  
-> SSM sessions default to `ssm-user`; switch to `ubuntu` before running scripts.
+- **EC2 Instance ID:** `i-011c79fffa7af9e27`  
+- **Primary user context:** **All operational commands run as `ubuntu`** using `sudo -u ubuntu -- bash -lc '…'` in SSM.  
+- **Repo location (server):** `/home/ubuntu/omneuro` (equivalently `~/omneuro` for user `ubuntu`).  
+- **Security Groups:** `sg-0de027ba0663a9c57` (80/443 open; admin ports to restricted IPs)
 
 ---
 
-### 2. DNS
+### 2. DNS (juicejunkiez.com)
 
-- Hosted zone: Route53 for `juicejunkiez.com`
-- Records (to be captured via `aws route53 list-resource-record-sets`):  
-  - `A`/`AAAA` → apex (`juicejunkiez.com`)  
-  - `A` → `api.juicejunkiez.com` → Elastic IP  
-  - `A` → `tech.juicejunkiez.com` → Elastic IP  
-  - `CNAME` → `www` → apex
+- **HostedZoneId:** `Z07470533F6JKXTF8S7GO`  
+- **Elastic IP:** `3.16.53.108` (us-east-2)  
+- **Records**
+  | Name                    | Type | TTL | Target        | Notes                         |
+  |-------------------------|------|-----|---------------|-------------------------------|
+  | `tech.juicejunkiez.com` | A    | 60  | `3.16.53.108` | Tech portal (nginx → gateway) |
+
+- **Registrar nameservers**
+  - `ns-1046.awsdns-02.org`
+  - `ns-2021.awsdns-60.co.uk`
+  - `ns-350.awsdns-43.com`
+  - `ns-670.awsdns-19.net`
 
 ---
 
 ### 3. TLS
 
-- Issuer: Let’s Encrypt (DNS/HTTP challenge)
-- Cert path: `/etc/letsencrypt/live/juicejunkiez.com/`
-- Renewal: `certbot.timer` via systemd  
-- Renewal logs: `journalctl -u certbot`
+- **Issuer:** Let’s Encrypt  
+- **Cert path:** `/etc/letsencrypt/live/tech.juicejunkiez.com/fullchain.pem`  
+- **Key path:** `/etc/letsencrypt/live/tech.juicejunkiez.com/privkey.pem`  
+- **Renewal:** `certbot.timer` (systemd)
 
 ---
 
 ### 4. Nginx
 
-- Version: (capture via `nginx -v`)
-- Config root: `/etc/nginx`
-- Server blocks: `/etc/nginx/sites-available/`, symlinked into `/etc/nginx/sites-enabled/`
-- Key features: gzip, HSTS (to be enabled after preload), proxy timeouts, upstreams to:
-  - brain-api (`localhost:8081`)
-  - tech-gateway (`localhost:8092`)
+- **Enabled site:** `/etc/nginx/sites-enabled/tech.juicejunkiez.com`  
+- **Upstream:** `http://127.0.0.1:8092` (tech-gateway)  
+- **Local health endpoint:** `/nginx-health` → 200
 
 ---
 
-### 5. Process Manager
+### 5. Services (Ports & Health)
 
-- PM2 managed apps:
-  - `brain-api` (port 8081)
-  - `tech-gateway` (port 8092)
-- Health endpoints:
-  - brain-api → `GET /healthz`
-  - tech-gateway → `GET /healthz`, `GET /api/tech/health`
-- Logs: PM2 logs located in `/home/ubuntu/.pm2/logs/`
+- **tech-gateway**
+  - Port: `8092`
+  - Health: `GET /healthz`, `GET /api/tech/health`
+  - Public: `https://tech.juicejunkiez.com` (nginx → gateway)
 
----
-
-### 6. Monitoring & Logs
-
-- **Nginx logs**: `/var/log/nginx/access.log`, `/var/log/nginx/error.log`
-- **PM2 logs**: `/home/ubuntu/.pm2/logs/`
-- **Rotation**: logrotate / pm2-logrotate
+- **brain-api**
+  - Port: `8081`
+  - Health: `GET /healthz`
+  - Access: internal (gateway → brain-api)
 
 ---
 
-### 7. Runbook Links
+### 6. Process Manager
 
-- [RUNBOOK.md](RUNBOOK.md) → step-by-step deploy, restart, renew certs, rollbacks.
-- [OBSERVABILITY.md](OBSERVABILITY.md) → monitoring and log collection.
-- [CHECKLISTS.md](CHECKLISTS.md) → pre/post-deploy, incident response.
-- [ENVIRONMENTS.md](ENVIRONMENTS.md) → prod/staging environment mapping.
+- **PM2 HOME (target):** `/home/ubuntu/.pm2` (owned by `ubuntu:ubuntu`)  
+- **Discovery:**
+  ```bash
+  sudo -u ubuntu -- bash -lc 'PM2_HOME=/home/ubuntu/.pm2 pm2 jlist'
+  ```
+
+---
+
+### 7. Logs
+
+- **Nginx:** `/var/log/nginx/access.log`, `/var/log/nginx/error.log`  
+- **PM2:** `/home/ubuntu/.pm2/logs/`  
+- **Rotation:** logrotate / pm2-logrotate
+
+---
+
+### 8. Runbook Links
+
+- `RUNBOOK.md` → deploy/restart/rollback steps  
+- `OBSERVABILITY.md` → monitoring + metrics  
+- `CHECKLISTS.md` → pre-/post-deploy, incident response  
+- `deploy-ops.md` → SSM patterns and redeploy script usage  
 
 ---
