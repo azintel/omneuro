@@ -25,6 +25,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@aws-sdk/client-ssm": "^3.876.0",
     "better-sqlite3": "^12.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
