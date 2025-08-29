@@ -1,5 +1,7 @@
 # RUNBOOK.md  
 
+# RUNBOOK.md  
+
 ## Purpose  
 This runbook documents **step-by-step recovery actions** for every recurring issue encountered during development, deployment, or operations of Omneuro.  
 It is the "break glass" manual for humans and AI when something fails.  
@@ -18,9 +20,16 @@ Cross-references point to `OPS.md`, `RULES.md`, `CHECKLISTS.md`, and `OBSERVABIL
 
 ### 1. Deploy Script Failures  
 - **Symptom**: `Permission denied` on `redeploy.sh`.  
-- **Diagnosis**: File not marked executable.  
+- **Diagnosis**: File not marked executable, or wrong user context.  
 - **Fix**:  
-- **Prevention**: Deploy script now self-applies `chmod`. Rule added to `RULES.md`.  
+  - Mark script executable: `chmod +x ./scripts/04-redeploy.sh`.  
+  - Ensure you are running as `ubuntu` user with `sudo`:  
+    ```bash
+    sudo -i -u ubuntu
+    cd ~/omneuro
+    ./scripts/04-redeploy.sh
+    ```  
+- **Prevention**: Deploy script now self-applies `chmod`. Rule added to `RULES.md`. Always confirm `ubuntu` context in `CHECKLISTS.md`.  
 
 ---
 

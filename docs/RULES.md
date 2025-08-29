@@ -50,43 +50,44 @@ Rules are **non-negotiable**. They should be short, direct, and actionable.
 26. **ECS stabilization required** – Never trust a green until ECS tasks show healthy.  
 27. **IAM least privilege** – Grant only what’s needed. Debug with admin, then roll back to minimal.  
 28. **Token freshness** – Rotate and validate tokens before every deploy.  
+29. **Correct user context** – All operational commands must be run as the `ubuntu` user with `sudo`. Running as `ssm-user` without escalation will fail.  
 
 ---
 
 ## Git & Workflow Rules
 
-29. **Never reset without backup** – Git resets must not destroy `.secrets`, configs, or ADRs.  
-30. **Commits are atomic** – One logical change per commit. Scripts, configs, and docs updated together.  
-31. **Docs update with code** – Every change must include documentation.  
-32. **ADR for every decision** – Major changes require an ADR entry.  
-33. **Use feature branches** – Never commit experimental changes directly to main.  
-34. **Pull, then chmod** – `redeploy.sh` must always reset its own perms after pull.  
-35. **Check diff before push** – Avoid committing debug or noise.  
-36. **No deploy without green tests** – All health checks must pass before production deploy.  
-37. **Don’t repeat past mistakes** – If it’s in the runbook, check it before re-debugging.  
+30. **Never reset without backup** – Git resets must not destroy `.secrets`, configs, or ADRs.  
+31. **Commits are atomic** – One logical change per commit. Scripts, configs, and docs updated together.  
+32. **Docs update with code** – Every change must include documentation.  
+33. **ADR for every decision** – Major changes require an ADR entry.  
+34. **Use feature branches** – Never commit experimental changes directly to main.  
+35. **Pull, then chmod** – `redeploy.sh` must always reset its own perms after pull.  
+36. **Check diff before push** – Avoid committing debug or noise.  
+37. **No deploy without green tests** – All health checks must pass before production deploy.  
+38. **Don’t repeat past mistakes** – If it’s in the runbook, check it before re-debugging.  
 
 ---
 
 ## Debugging Rules
 
-38. **Start simple** – Always check permissions, regions, and logs before touching code.  
-39. **Boundary testing** – Verify where the request fails: gateway, service, schema, or infra.  
-40. **Instrument first** – Add metrics/tracing before deep debug loops.  
-41. **Stop log blindness** – If logs don’t explain the failure, fix observability first.  
-42. **No assumption loops** – Don’t spend cycles guessing. Validate with evidence.  
-43. **Escalate after 3 cycles** – If stuck, escalate to ADR or retro.  
-44. **Use structured logs** – Include request IDs, timestamps, correlation data.  
-45. **Always curl the endpoint** – Don’t trust assumptions; test endpoints directly.  
+39. **Start simple** – Always check permissions, regions, and logs before touching code.  
+40. **Boundary testing** – Verify where the request fails: gateway, service, schema, or infra.  
+41. **Instrument first** – Add metrics/tracing before deep debug loops.  
+42. **Stop log blindness** – If logs don’t explain the failure, fix observability first.  
+43. **No assumption loops** – Don’t spend cycles guessing. Validate with evidence.  
+44. **Escalate after 3 cycles** – If stuck, escalate to ADR or retro.  
+45. **Use structured logs** – Include request IDs, timestamps, correlation data.  
+46. **Always curl the endpoint** – Don’t trust assumptions; test endpoints directly.  
 
 ---
 
 ## Cultural Rules
 
-46. **Spartan docs** – Short, clear, referenceable. No fluff.  
-47. **Respect the checklist** – Checklists exist because we failed without them. Use them.  
-48. **Retro discipline** – Every sprint ends with a retro distilled into rules.  
-49. **No startup chaos** – Move like professionals, not hobbyists.  
-50. **Leave rope, not threats** – Communication (internal and external) is assertive but respectful.  
+47. **Spartan docs** – Short, clear, referenceable. No fluff.  
+48. **Respect the checklist** – Checklists exist because we failed without them. Use them.  
+49. **Retro discipline** – Every sprint ends with a retro distilled into rules.  
+50. **No startup chaos** – Move like professionals, not hobbyists.  
+51. **Leave rope, not threats** – Communication (internal and external) is assertive but respectful.  
 
 ---
 

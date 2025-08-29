@@ -13,10 +13,11 @@ Everything here was written in blood, sweat, and failed `curl` checks.
 - **Health-first.** If health checks fail, deploy halts.  
 - **Self-healing.** Scripts add retries and permissions fixes automatically.  
 - **Consistency.** Every deploy follows the same steps across services.  
+- **Correct user context.** All commands must be executed as the `ubuntu` user with `sudo`.  
 
 ---
 
-### 2. Redeploy Script (`redeploy.sh`)
+### 2. Redeploy Script (`redeploy.sh` / `04-redeploy.sh`)
 
 Our canonical redeploy script is now stable and green across the board.  
 
@@ -41,6 +42,15 @@ Key features:
    - If any check fails after retries, script exits non-zero.
    - Protects us from deploying silently broken code.  
 
+5. **Run as ubuntu**
+   - When connecting via SSM, the session defaults to `ssm-user`.  
+   - Switch to `ubuntu` before redeploy:  
+     ```bash
+     sudo -i -u ubuntu
+     cd ~/omneuro
+     ./scripts/04-redeploy.sh
+     ```  
+
 ---
 
 ### 3. Health Check Standards
@@ -57,3 +67,33 @@ Key features:
       sleep 2
     fi
   done
+  ```  
+
+---
+
+### 4. SSM Workflow
+
+- Start session:
+  ```bash
+  aws ssm start-session --region us-east-2 --target i-011c79fffa7af9e27
+  ```
+- Switch to ubuntu:
+  ```bash
+  sudo -i -u ubuntu
+  ```
+- Navigate and redeploy:
+  ```bash
+  cd ~/omneuro
+  ./scripts/04-redeploy.sh
+  ```
+
+---
+
+### 5. Cross-References
+
+- `OPS.md` → System-wide ops overview.  
+- `CHECKLISTS.md` → Pre-deploy and post-deploy safety steps.  
+- `RUNBOOK.md` → Recovery procedures if redeploy fails.  
+- `OBSERVABILITY.md` → Monitoring and metrics after redeploy.  
+
+---

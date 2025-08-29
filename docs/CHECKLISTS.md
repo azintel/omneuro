@@ -18,6 +18,7 @@ If something is missing, update this file. If something repeats across projects,
 - [ ] Confirm AWS region matches project defaults.  
 - [ ] Ensure SSM agent is running on all target instances.  
 - [ ] Validate fresh tokens/credentials.  
+- [ ] Confirm you are running as `ubuntu` user (use `sudo -i -u ubuntu` if needed).  
 - [ ] Run unit tests and integration tests locally.  
 - [ ] Run schema contract validation (`SCHEMA.md` alignment).  
 - [ ] Push code and docs updates together (atomic commit).  
@@ -26,7 +27,7 @@ If something is missing, update this file. If something repeats across projects,
 
 ## 2. Deploy Checklist
 
-- [ ] Execute `./redeploy.sh`.  
+- [ ] Execute `./redeploy.sh` or `./scripts/04-redeploy.sh` as `ubuntu`.  
 - [ ] Confirm script retries health checks with backoff.  
 - [ ] Validate ECS task stabilization.  
 - [ ] Verify services register healthy in CloudWatch.  

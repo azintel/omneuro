@@ -74,6 +74,7 @@ If you read only one document: read this, then follow the cross-references.
 ### AWS / SSM
 - Wrong user permissions killed hours.  
 - Contract: use IAM roles, not static keys.  
+- **Always switch to `ubuntu` with `sudo -i -u ubuntu` when running redeploys.**  
 
 ### Logging
 - Debug noise drowned real issues.  
@@ -102,7 +103,11 @@ If you read only one document: read this, then follow the cross-references.
   Learn our JSON structure.  
 
 - **Follow a Full Deploy Cycle**  
-  Run `git push`, watch GitHub Actions, validate with health script.  
+  - `git push` your changes.  
+  - Watch GitHub Actions pipeline.  
+  - Connect via SSM → switch to `ubuntu` with `sudo -i -u ubuntu`.  
+  - Run `./scripts/04-redeploy.sh`.  
+  - Validate with health script.  
 
 - **Break and Fix Something in Sandbox**  
   Use `RUNBOOK.md` to recover.  
@@ -154,4 +159,4 @@ If you follow this guide and the cross-references:
 - You’ll be productive on Day 1.  
 - And Omneuro will continue to move forward like a professional team.  
 
-Welcome aboard. 🚀
+Welcome aboard. 🚀  

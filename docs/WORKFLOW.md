@@ -44,26 +44,40 @@ Everything here exists to eliminate wasted cycles, prevent debug traps, and enfo
    - Keep debug noise out of production.  
 
 3. **Commit & Push**  
-git add -A
-git commit -m “Message”
-git push
+   ```bash
+   git add -A
+   git commit -m "Message"
+   git push
+   ```
 
 4. **Deploy**  
-- Run `./redeploy.sh`.  
-- Script auto-applies `chmod +x`.  
-- Script retries health checks with backoff.  
+   - Connect via SSM:  
+     ```bash
+     aws ssm start-session --region us-east-2 --target <instance-id>
+     ```  
+   - Switch to ubuntu user:  
+     ```bash
+     sudo -i -u ubuntu
+     cd ~/omneuro
+     ```  
+   - Run the canonical redeploy:  
+     ```bash
+     ./scripts/04-redeploy.sh
+     ```  
+   - Script auto-applies `chmod +x`.  
+   - Script retries health checks with backoff.  
 
 5. **Verify**  
-- Confirm all greens in redeploy script.  
-- Tail CloudWatch logs.  
-- Validate service health:  
-  - brain-api → `/healthz`  
-  - tech-gateway → `/healthz`, `/api/tech/health`  
+   - Confirm all greens in redeploy script.  
+   - Tail CloudWatch logs.  
+   - Validate service health:  
+     - brain-api → `/healthz`  
+     - tech-gateway → `/healthz`, `/api/tech/health`  
 
 6. **Document**  
-- Update `RUNBOOK.md` for fixes.  
-- Update `RULES.md` for lessons.  
-- Update `CHECKLISTS.md` if a new safety step emerges.  
+   - Update `RUNBOOK.md` for fixes.  
+   - Update `RULES.md` for lessons.  
+   - Update `CHECKLISTS.md` if a new safety step emerges.  
 
 ---
 

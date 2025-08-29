@@ -12,6 +12,7 @@ Omneuro relies on strong observability to prevent blind debugging loops and wast
 - **Single source of truth.** CloudWatch is the system of record.  
 - **Fast feedback.** Errors must surface within seconds.  
 - **Minimal noise.** Logs should be actionable, not spammy.  
+- **Correct user context.** Observability setup and verification commands must be executed as the `ubuntu` user with `sudo` in SSM sessions.
 
 ---
 
@@ -20,7 +21,8 @@ Omneuro relies on strong observability to prevent blind debugging loops and wast
 - Every service implements `GET /healthz`.  
 - `tech-gateway` adds `GET /api/tech/health`.  
 - Health check script retries 5× with backoff.  
-- No phantom endpoints are allowed in tests.
+- No phantom endpoints are allowed in tests.  
+- Health checks must be run under `ubuntu` to ensure correct environment and permissions.  
 
 ---
 
@@ -34,7 +36,7 @@ Omneuro relies on strong observability to prevent blind debugging loops and wast
   - No debug spam in production builds.  
 - **Error logging**:  
   - Stack traces logged once, not repeatedly.  
-  - Redacted sensitive data (secrets, tokens).
+  - Redacted sensitive data (secrets, tokens).  
 
 ---
 
@@ -43,7 +45,7 @@ Omneuro relies on strong observability to prevent blind debugging loops and wast
 - Success/failure counts for health endpoints.  
 - Deploy success/failure metrics tied to `redeploy.sh`.  
 - Latency measurements for API calls.  
-- Error rate thresholds trigger rollback.
+- Error rate thresholds trigger rollback.  
 
 ---
 
@@ -52,7 +54,8 @@ Omneuro relies on strong observability to prevent blind debugging loops and wast
 - **Blind debugging** cost days → fixed by adding CloudWatch + local logs.  
 - **Inconsistent stream names** broke dashboards → now enforced in config.  
 - **Debug noise** obscured real errors → strict filtering in production logs.  
-- **Phantom endpoints** wasted time → strict endpoint registry.
+- **Phantom endpoints** wasted time → strict endpoint registry.  
+- **Wrong user context** in SSM caused missing logs/metrics → rule: always switch to `ubuntu`.  
 
 ---
 
@@ -60,4 +63,6 @@ Omneuro relies on strong observability to prevent blind debugging loops and wast
 
 - `logs.md` → detailed log management.  
 - `sanity.md` → periodic sanity checks.  
-- `deploy-ops.md` → integrated health checks.
+- `deploy-ops.md` → integrated health checks.  
+
+---
