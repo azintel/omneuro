@@ -6,9 +6,13 @@ import { fileURLToPath } from "node:url";
 import { appRouter } from "./routes.js";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
+import chatRouter from "./routes/chat.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+//chatrouter
+app.use("/api", chatRouter);
 
 // body + cors
 app.use(express.json({ limit: "5mb" }));

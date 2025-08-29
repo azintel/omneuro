@@ -1,87 +1,134 @@
-# Omneuro Data Model (v0.1)
+# SCHEMA.md
 
-## Principles
-- Single source of truth in brain-api; gateway is stateless/edge.
-- Event-first: every meaningful action emits an Event for the KB.
-- Start with SQLite for speed, migrate to Postgres when scale requires.
+## Purpose
+Schema is the **contract** of Omneuro.  
+It prevents drift, protects integrations, and forces clarity.  
 
-## Entities (MVP)
-### techs
-- id (text, pk)
-- name (text)
-- phone (text)
-- email (text)
-- active (int/bool)
-- created_at (text ISO)
-- updated_at (text ISO)
+If it isn’t in the schema, it isn’t real.  
+If it changes, the change must be explicit and versioned.  
 
-### clients
-- id (text, pk)
-- name (text)
-- phone (text)
-- email (text)
-- preferred_channel (text: sms|email|call)
-- created_at, updated_at
+---
 
-### jobs
-- id (text, pk)
-- client_id (text -> clients.id)
-- title (text)
-- status (text: intake|scheduled|onsite|repairing|ready|shipped|closed|cancelled)
-- scheduled_for (text ISO)
-- assigned_tech_id (text -> techs.id)
-- location (text)
-- notes (text)
-- created_at, updated_at
+## 1. Principles
 
-### messages
-- id (text, pk)
-- job_id (text -> jobs.id) nullable
-- tech_id (text -> techs.id) nullable
-- client_id (text -> clients.id) nullable
-- direction (text: inbound|outbound)
-- channel (text: chat|sms|email|phone)
-- body (text)
-- ts (text ISO)
-- meta (json)
+- **Single Source of Truth**  
+  All inter-service contracts live here. No hidden assumptions.  
 
-### events
-- id (text, pk)
-- kind (text: job.status.changed|tech.message|client.message|schedule.created|payment.*|kb.ingest)
-- actor (text: tech:<id>|client:<id>|system)
-- ref_type (text: job|client|tech)
-- ref_id (text)
-- payload (json)
-- ts (text ISO)
+- **Schema Before Code**  
+  We design schema before implementing features.  
 
-### schedule
-- id (text, pk)
-- job_id (text -> jobs.id)
-- tech_id (text -> techs.id)
-- start_ts (text ISO)
-- end_ts (text ISO)
-- status (text: planned|confirmed|done|cancelled)
-- meta (json)
+- **Backward Compatibility**  
+  No breaking changes without ADR approval.  
 
-### kb_entries
-- id (text, pk)
-- source_event_id (text -> events.id)
-- type (text: faq|howto|diag|part|note)
-- title (text)
-- body (text)
-- tags (text)
-- ts (text ISO)
-- embedding (blob/json) [future]
+- **Contracts as Code**  
+  Schemas are version-controlled, linted, and validated automatically.  
 
-## Indices
-- jobs(client_id), jobs(status), jobs(scheduled_for)
-- messages(job_id, ts)
-- events(ref_type, ref_id, ts)
-- schedule(tech_id, start_ts)
+- **Minimal Surfaces**  
+  Every endpoint and payload should be as small as possible while still solving the problem.  
 
-## Event flow
-- Any gateway action → brain-api endpoint → domain change → write to events → optional projection into jobs/messages/schedule/kb_entries.
+---
 
-## Migrations
-- SQLite: simple `ALTER TABLE`/“create new table + copy”.
-- Plan for Postgres: pg-migrate or Prisma later.
+## 2. Schema Format
+
+- JSON Schema for payloads.  
+- OpenAPI spec for service endpoints.  
+- SQL schema migrations versioned and documented.  
+- Events documented in the same way as REST endpoints.  
+
+---
+
+## 3. Validation
+
+- Schemas are auto-tested during CI/CD.  
+- Every deploy runs schema validation across:
+  - API requests/responses.  
+  - Event bus payloads.  
+  - Database migrations.  
+
+- Mismatches fail the build. No exceptions.  
+
+---
+
+## 4. Governance
+
+- Schema changes require:
+  - An ADR (see `/ADR-*`).  
+  - Update to this document.  
+  - Version bump in `CONTRACTS.md`.  
+  - Tests proving compatibility.  
+
+- Breaking changes only allowed if:
+  - Version bump (e.g. `/v2/health`).  
+  - Migration path documented in `RUNBOOK.md`.  
+  - Downtime window approved.  
+
+---
+
+## 5. Contracts & Endpoints (Cross-Reference)
+
+- **Brain API**  
+  Health: `/healthz`  
+  Core contract: see `brain-api.md`  
+
+- **Tech Gateway**  
+  Health: `/health`, `/api/tech/health`  
+  (See `tech-gateway.md` for details)  
+
+- **Shared Contracts**  
+  - Standard health contract = `{ "status": "ok", "uptime": <seconds> }`  
+  - Errors must use `{ "error": { "code": <int>, "message": <string> } }`  
+  - Dates in ISO 8601 only.  
+  - IDs are UUIDv4 unless documented otherwise.  
+
+---
+
+## 6. Common Pitfalls (Lessons Learned)
+
+- **Untracked Changes**  
+  We lost days when schema drifted silently. Rule: update schema first.  
+
+- **Too Many Health Endpoints**  
+  Confusion arose with duplicate health routes. Rule: one canonical, others redirect.  
+
+- **Git Resets Nuking Contracts**  
+  When `.secrets/` or schema got wiped, integration failed. Rule: protect schema in version control.  
+
+- **Debug vs Contract Data**  
+  Logs sometimes diverged from schema. Rule: never trust logs as contracts.  
+
+- **Assumptions Between Services**  
+  Services assumed payloads existed without schema proof. Rule: schemas must explicitly list optional vs required.  
+
+---
+
+## 7. Change Workflow
+
+1. Propose schema change.  
+2. Draft ADR.  
+3. Update `SCHEMA.md`.  
+4. Update `CONTRACTS.md`.  
+5. Add validation tests.  
+6. Merge → Deploy.  
+
+---
+
+## 8. Enforcement
+
+- Pre-commit hooks lint schema.  
+- CI fails on schema mismatch.  
+- Deployment blocks until health endpoints confirm schema consistency.  
+
+---
+
+## 9. Schema Retro Rules (From Our Sprints)
+
+- Document *first*, code *second*.  
+- A contract isn’t real unless both humans + AI can enforce it.  
+- Every schema change should leave behind a breadcrumb in docs.  
+- Never debug schema by guesswork: run the validator.  
+- If a schema update causes more than 3 failed cycles → stop and refactor.  
+
+---
+
+✅ Schema is the contract that keeps Omneuro alive.  
+Follow it strictly, and services will align without surprises.  
