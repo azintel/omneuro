@@ -4,133 +4,133 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>JuiceJunkiez • PEV Service & Repair</title>
-  <meta name="description" content="Personal electric vehicle (PEV) service, repair, and parts. Book service, track repairs, and shop parts." />
-  <meta property="og:title" content="JuiceJunkiez • PEV Service & Repair" />
-  <meta property="og:description" content="PEV service, repair, and parts. Book service, track repairs, and shop parts." />
-  <meta property="og:type" content="website" />
-  <meta name="theme-color" content="#0b0f16" />
-  <link rel="icon" href="/favicon.ico" />
+  <title>Omneuro • Repairbot Console</title>
   <style>
-    :root{
-      --bg:#0b0f16; --card:#0f1622; --ink:#e6edf3; --muted:#9fb0c7;
-      --line:#1f2633; --brand:#00d0ff; --accent:#5de4c7;
-    }
+    :root{--bg:#0b0f16;--panel:#0f1622;--border:#1f2633;--text:#e6edf3;--muted:#9fb0c3;--accent:#1e90ff}
     *{box-sizing:border-box}
-    body{
-      margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;
-      color:var(--ink); background:var(--bg);
-    }
-    a{color:var(--brand); text-decoration:none}
-    a:hover{opacity:.9}
-    .wrap{max-width:1000px; margin:0 auto; padding:20px}
-    header{
-      display:flex; align-items:center; gap:16px; padding:16px 20px; border-bottom:1px solid var(--line);
-      position:sticky; top:0; backdrop-filter:saturate(140%) blur(6px); background:rgba(11,15,22,.65);
-    }
-    .logo{
-      width:44px; height:44px; border-radius:10px; object-fit:cover; background:#000;
-      display:block;
-    }
-    .brand{font-size:18px; font-weight:700; margin:0}
-    .subtitle{font-size:12px; color:var(--muted)}
-    nav{margin-left:auto; display:flex; gap:12px; flex-wrap:wrap}
-    nav a{
-      padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink);
-    }
-    .hero{
-      display:grid; gap:14px; padding:28px; border:1px solid var(--line); background:var(--card); border-radius:16px; margin-top:18px;
-    }
-    .hero h1{font-size:28px; margin:0}
-    .hero p{color:var(--muted); margin:0}
-    .cta{display:flex; gap:10px; flex-wrap:wrap; margin-top:6px}
-    .btn{
-      padding:10px 14px; border-radius:12px; border:1px solid var(--line); background:#132238; color:var(--ink);
-      cursor:pointer; display:inline-block;
-    }
-    .btn.primary{background:linear-gradient(135deg,var(--brand),var(--accent)); color:#001018; font-weight:700; border:none}
-    .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin-top:18px}
-    .card{border:1px solid var(--line); background:var(--card); border-radius:16px; padding:16px}
-    .card h3{margin:0 0 8px 0; font-size:16px}
-    .muted{color:var(--muted); font-size:14px}
-    .kvs{display:grid; gap:6px; margin-top:6px}
-    .kv{display:flex; justify-content:space-between; gap:10px; border-top:1px dashed var(--line); padding-top:6px}
-    footer{margin:28px 0 12px; color:var(--muted); font-size:12px; text-align:center}
-    .pill{font-size:12px; padding:4px 8px; border:1px solid var(--line); border-radius:999px; background:rgba(93,228,199,.08)}
-    .contact{display:flex; gap:10px; flex-wrap:wrap}
-    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
-    .stack{display:grid; gap:6px}
+    body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif}
+    header{position:sticky;top:0;background:rgba(11,15,22,.8);backdrop-filter:blur(6px);padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+    header h1{font-size:16px;margin:0}
+    header .tag{font-size:12px;color:var(--muted)}
+    header .pill{display:inline-block;padding:3px 8px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:12px}
+    .ok{color:#8df58d}.err{color:#ff8d8d}
+    main{max-width:980px;margin:0 auto;padding:18px}
+    .grid{display:grid;grid-template-columns:1fr 320px;gap:16px}
+    @media (max-width: 900px){.grid{grid-template-columns:1fr}}
+    .card{border:1px solid var(--border);background:var(--panel);border-radius:12px}
+    .chat{display:flex;flex-direction:column;height:calc(100vh - 120px)}
+    .log{padding:14px;height:100%;overflow:auto;scroll-behavior:smooth}
+    .msg{border:1px solid var(--border);background:#0e1420;border-radius:10px;padding:10px 12px;margin:8px 0;white-space:pre-wrap}
+    .msg .role{font-size:12px;color:var(--muted);margin-bottom:4px}
+    .input{border-top:1px solid var(--border);padding:12px;display:flex;gap:10px;flex-wrap:wrap}
+    .input input[type="text"]{flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:#0e1420;color:var(--text)}
+    .input button{padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:#132238;color:var(--text);cursor:pointer}
+    .input button:disabled{opacity:.6;cursor:not-allowed}
+    .kv{padding:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:120px 1fr;gap:10px}
+    .kv div{font-size:13px}
   </style>
 </head>
 <body>
   <header>
-    <img class="logo" src="/img/jj-logo.png" alt="JuiceJunkiez logo" />
-    <div>
-      <p class="brand">JuiceJunkiez</p>
-      <p class="subtitle">PEV Service • Repair • Parts</p>
-    </div>
-    <nav>
-      <a href="/api/chat" title="Tech Portal">Tech Portal</a>
-      <a href="/garage" title="Client Dashboard">Client Garage</a>
-      <a href="/shop" title="Shop">Shop</a>
-      <a href="/contact" title="Contact">Contact</a>
-    </nav>
+    <h1>Omneuro • Repairbot</h1>
+    <span class="tag">tech.juicejunkiez.com</span>
+    <span id="lock-pill" class="pill err">locked</span>
   </header>
-
-  <main class="wrap">
-    <section class="hero">
-      <div class="pill">NOW SERVING • e-bikes, scooters, EUCs & more</div>
-      <h1>Keep your ride electric. We handle the rest.</h1>
-      <p>Service & diagnostics for personal electric vehicles. Book online, track your repair, and shop curated parts.</p>
-      <div class="cta">
-        <a class="btn primary" href="/garage">Enter Client Garage</a>
-        <a class="btn" href="/shop">Visit Shop</a>
-        <a class="btn" href="/api/chat">Tech Portal</a>
-      </div>
-    </section>
-
-    <section class="grid">
-      <div class="card">
-        <h3>Hours & Contact</h3>
-        <div class="stack">
-          <div class="kv"><span class="muted">Phone</span><span class="mono"><a href="tel:+19512968725">(951) 296-8725</a></span></div>
-          <div class="kv"><span class="muted">Email</span><span class="mono"><a href="mailto:juicejunkiezmd@gmail.com">juicejunkiezmd@gmail.com</a></span></div>
-          <div class="kv"><span class="muted">Shop Drop-Off</span><span class="mono">409 S Addison St, Baltimore, MD</span></div>
-          <div class="kv"><span class="muted">Mailing</span><span class="mono">Available upon request</span></div>
-          <div class="kv"><span class="muted">Hours</span><span class="mono">Mon–Sat 10a–6p</span></div>
+  <main>
+    <div class="grid">
+      <section class="card chat">
+        <div id="log" class="log"></div>
+        <form id="f" class="input" autocomplete="off">
+          <input id="q" type="text" placeholder="Ask Repairbot (access code required)" />
+          <button id="send" type="submit">Send</button>
+        </form>
+      </section>
+      <aside class="card">
+        <div style="padding:12px 12px 0 12px;"><b>Quick Actions</b></div>
+        <div class="kv">
+          <div>Health</div><div id="health">checking…</div>
+          <div>Gateway</div><div><code>/api/health</code></div>
+          <div>Chat API</div><div><code>/api/chat</code></div>
         </div>
-      </div>
-
-      <div class="card">
-        <h3>What you can do here</h3>
-        <ul class="muted">
-          <li>Add your vehicles to your Garage (make/model)</li>
-          <li>Schedule service & drop-offs</li>
-          <li>Track repair status & approvals</li>
-          <li>Pay invoices securely via Stripe</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <h3>For Technicians</h3>
-        <p class="muted">Use the Tech Portal to talk to Repairbot, log diagnostics, and push updates for clients. <a href="/api/chat">Open Tech Portal →</a></p>
-      </div>
-    </section>
-
-    <section class="card" style="margin-top:18px">
-      <h3>Quick Links</h3>
-      <div class="contact">
-        <a class="btn" href="/legal/terms">Terms</a>
-        <a class="btn" href="/legal/privacy">Privacy</a>
-        <a class="btn" href="mailto:juicejunkiezmd@gmail.com">Email Support</a>
-      </div>
-    </section>
-
-    <footer>
-      © <span id="y"></span> JuiceJunkiez. All rights reserved. • Powered by Omneuro.
-    </footer>
+      </aside>
+    </div>
   </main>
 
-  <script>document.getElementById('y').textContent = new Date().getFullYear()</script>
+  <script>
+    const log = document.getElementById('log');
+    const f = document.getElementById('f');
+    const q = document.getElementById('q');
+    const send = document.getElementById('send');
+    const lockPill = document.getElementById('lock-pill');
+    const messages = [{ role: 'system', content: 'You are Repairbot for Omneuro EV repairs.' }];
+
+    function add(role, content){
+      const div = document.createElement('div');
+      div.className = 'msg';
+      const r = document.createElement('div');
+      r.className = 'role';
+      r.textContent = role.toUpperCase();
+      const c = document.createElement('div');
+      c.textContent = content;
+      div.appendChild(r); div.appendChild(c);
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function getToken() {
+      let t = localStorage.getItem('ACCESS_TOKEN') || '';
+      if (!t) {
+        t = prompt('Enter access code to use Repairbot:') || '';
+        if (t) localStorage.setItem('ACCESS_TOKEN', t);
+      }
+      lockPill.textContent = t ? 'unlocked' : 'locked';
+      lockPill.className = 'pill ' + (t ? 'ok' : 'err');
+      return t;
+    }
+
+    async function ping() {
+      try {
+        const r = await fetch('/api/health');
+        document.getElementById('health').innerHTML = r.ok ? '<span class="ok">OK</span>' : '<span class="err">DOWN</span>';
+      } catch {
+        document.getElementById('health').innerHTML = '<span class="err">DOWN</span>';
+      }
+    }
+
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = q.value.trim();
+      if (!text) return;
+      const token = getToken();
+      if (!token) { add('system', 'Missing access code.'); return; }
+
+      q.value=''; send.disabled=true;
+      messages.push({ role: 'user', content: text });
+      add('user', text);
+
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Access-Token': token },
+          body: JSON.stringify({ messages })
+        });
+        if (!resp.ok) {
+          const t = await resp.text();
+          add('system', 'Error: ' + t);
+        } else {
+          const { reply } = await resp.json();
+          messages.push({ role: 'assistant', content: reply });
+          add('assistant', reply);
+        }
+      } catch (e2) {
+        add('system', 'Network error: ' + (e2?.message || e2));
+      } finally {
+        send.disabled=false;
+      }
+    });
+
+    // boot
+    getToken(); ping(); setInterval(ping, 15000);
+  </script>
 </body>
 </html>
