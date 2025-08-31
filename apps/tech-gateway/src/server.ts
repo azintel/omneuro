@@ -1,3 +1,5 @@
+// apps/tech-gateway/src/server.ts
+
 import techRouter from "./routes/tech.js";
 import cors from "cors";
 import express from "express";
@@ -11,7 +13,44 @@ import chatRouter from "./routes/chat.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-//chatrouter
+// -----------------------------
+// Auth config (scoped to /api/*)
+// -----------------------------
+const BASIC_USER = process.env.BASIC_AUTH_USER || "";
+const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
+const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
+
+// Paths under /api/* that should remain public (health checks, etc.)
+const API_PUBLIC_PATHS = new Set<string>([
+  "/health",
+  "/tech/health",
+]);
+
+function requireBasicAuthForApi(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!authEnabled) return next();
+
+  // When mounted at /api, req.path is the path AFTER "/api"
+  if (API_PUBLIC_PATHS.has(req.path)) return next();
+
+  const hdr = req.headers.authorization || "";
+  if (!hdr.startsWith("Basic ")) {
+    res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
+    return res.status(401).send("Authentication required");
+  }
+  const b64 = hdr.slice("Basic ".length).trim();
+  const [u, p] = Buffer.from(b64, "base64").toString().split(":", 2);
+  if (u === BASIC_USER && p === BASIC_PASS) return next();
+
+  res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
+  return res.status(401).send("Invalid credentials");
+}
+
+// -----------------------------
+// Routers (chat first, as before)
+// -----------------------------
+app.use("/api", requireBasicAuthForApi); // protect /api/* except public paths above
+
+// chatrouter
 app.use("/api", chatRouter);
 
 // body + cors
@@ -59,7 +98,7 @@ app.get("/admin/diag", (req, res) => {
 app.use("/api/tech", techRouter);
 app.use("/v1", appRouter);
 
-// static
+// static (public homepage + assets)
 app.use("/", express.static(path.join(__dirname, "public")));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 

@@ -71,3 +71,52 @@ if check_with_retries http://localhost:8092/healthz "tech-gateway" \
 else
   echo "tech-gateway health checks failed"
 fi
+
+### --- Post-deploy health checks (homepage + tech portal) ---
+echo "=== [REDEPLOY] Health check (public) ==="
+
+# helper: wait for a URL to return 200
+wait200() {
+  local url="$1"
+  local tries="${2:-20}"
+  local delay="${3:-2}"
+  for i in $(seq 1 "$tries"); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "[OK] $url"
+      return 0
+    fi
+    echo "[..] waiting for $url ($i/$tries)"
+    sleep "$delay"
+  done
+  echo "[ERR] $url did not become healthy" >&2
+  return 1
+}
+
+# 1) Root site (homepage served by tech-gateway via Nginx)
+wait200 "https://juicejunkiez.com/nginx-health"
+wait200 "https://juicejunkiez.com/"
+
+# 2) Tech portal basic health
+wait200 "https://tech.juicejunkiez.com/healthz"
+wait200 "https://tech.juicejunkiez.com/api/health"
+
+# 3) Optional smoke test for chat API (expects JSON; masks long tokens in output)
+echo "=== [REDEPLOY] Chat API smoke test ==="
+CHAT_JSON='{"messages":[{"role":"user","content":"Say hello, Repairbot."}]}'
+CHAT_RC=0
+CHAT_OUT="$(curl -sS -w " HTTP:%{http_code}" -H "content-type: application/json" \
+  -d "$CHAT_JSON" "https://tech.juicejunkiez.com/api/chat" || true)"
+HTTP_CODE="${CHAT_OUT##* HTTP:}"
+BODY="${CHAT_OUT% HTTP:*}"
+
+if [ "$HTTP_CODE" = "200" ]; then
+  echo "[OK] chat API HTTP 200"
+else
+  echo "[WARN] chat API not healthy (HTTP $HTTP_CODE). Body (trimmed):"
+  echo "$BODY" | sed -E 's/[A-Za-z0-9_\-]{24,}/[REDACTED]/g' | head -c 400; echo
+  CHAT_RC=1
+fi
+
+# Exit non-zero only if the mandatory health endpoints failed
+# (homepage + portal). Chat smoke test is informative but non-fatal for deploys.
+exit $CHAT_RC
