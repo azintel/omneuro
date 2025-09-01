@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Client Garage • Juice Junkiez</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0a0a0a; --card:#131313; --ink:#f5f5f5; --muted:#b9b9b9; --line:#242424;
+      --accent:#ffd84d; --accent-ink:#1b1b1b; --radius:14px; --pad:16px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif}
+    header,main{max-width:980px;margin:0 auto;padding:20px}
+    header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+    h1{font-size:18px;margin:0}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--pad);margin-top:16px}
+    label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+    input,textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0f0f0f;color:var(--ink)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    button{margin-top:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:#0f0f0f;color:var(--ink);cursor:pointer}
+    button:hover{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,216,77,.15)}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;font-size:14px}
+    .muted{color:var(--muted);font-size:12px}
+    a{color:var(--accent)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Client Garage</h1>
+    <a href="/" class="muted">← Back to Homepage</a>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>Add a Vehicle</h2>
+      <div class="row">
+        <div>
+          <label>Owner Email</label>
+          <input id="email" placeholder="you@example.com" />
+        </div>
+        <div>
+          <label>Name (optional)</label>
+          <input id="name" placeholder="Jane Doe" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Phone (optional)</label>
+          <input id="phone" placeholder="(555) 123-4567" />
+        </div>
+        <div></div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Make</label>
+          <input id="make" placeholder="Begode" />
+        </div>
+        <div>
+          <label>Model</label>
+          <input id="model" placeholder="Master Pro" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Nickname (optional)</label>
+          <input id="nickname" placeholder="Big Wheel" />
+        </div>
+        <div>
+          <label>Notes (optional)</label>
+          <input id="notes" placeholder="Any context for the techs…" />
+        </div>
+      </div>
+      <button id="submit">Add vehicle</button>
+      <div id="msg" class="muted"></div>
+    </div>
+
+    <div class="card">
+      <h2>Your Vehicles</h2>
+      <div class="row">
+        <div>
+          <label>Owner Email</label>
+          <input id="queryEmail" placeholder="you@example.com" />
+        </div>
+        <div style="display:flex;align-items:end"><button id="load">Load</button></div>
+      </div>
+      <table id="tbl" style="display:none">
+        <thead><tr><th>ID</th><th>Make</th><th>Model</th><th>Nickname</th><th>Created</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="empty" class="muted">Enter your email and click Load.</div>
+    </div>
+  </main>
+
+  <script>
+    const API = "https://tech.juicejunkiez.com/api/garage";
+
+    async function postJSON(url, body){
+      const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
+      if(!r.ok) throw new Error(await r.text());
+      return r.json();
+    }
+    async function getJSON(url){
+      const r = await fetch(url);
+      if(!r.ok) throw new Error(await r.text());
+      return r.json();
+    }
+
+    const $ = (id)=>document.getElementById(id);
+    $("submit").onclick = async ()=>{
+      $("msg").textContent = "";
+      try{
+        const payload = {
+          owner_email: $("email").value.trim(),
+          name: $("name").value.trim(),
+          phone: $("phone").value.trim(),
+          make: $("make").value.trim(),
+          model: $("model").value.trim(),
+          nickname: $("nickname").value.trim(),
+          notes: $("notes").value.trim(),
+        };
+        const out = await postJSON(API + "/vehicles", payload);
+        $("msg").textContent = "Added vehicle ID " + out.vehicle.id;
+      }catch(err){ $("msg").textContent = "Error: " + err; }
+    };
+
+    $("load").onclick = async ()=>{
+      $("empty").style.display = "block";
+      $("tbl").style.display = "none";
+      try{
+        const email = $("queryEmail").value.trim();
+        const out = await getJSON(API + "/vehicles?owner_email=" + encodeURIComponent(email));
+        const tbody = document.querySelector("#tbl tbody");
+        tbody.innerHTML = "";
+        out.items.forEach(v=>{
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${v.id}</td><td>${v.make}</td><td>${v.model}</td><td>${v.nickname||""}</td><td>${v.created_at||""}</td>`;
+          tbody.appendChild(tr);
+        });
+        $("empty").style.display = out.items.length ? "none" : "block";
+        $("tbl").style.display = out.items.length ? "table" : "none";
+      }catch(err){
+        $("empty").textContent = "Error: " + err;
+      }
+    };
+  </script>
+</body>
+</html>

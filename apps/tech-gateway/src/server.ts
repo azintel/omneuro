@@ -1,61 +1,27 @@
 // apps/tech-gateway/src/server.ts
 
-import techRouter from "./routes/tech.js";
 import cors from "cors";
 import express from "express";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { appRouter } from "./routes.js";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+
+import techRouter from "./routes/tech.js";
 import chatRouter from "./routes/chat.js";
-import garageRouter from "./routes/garage.js"; // ⬅ NEW
+import garageRouter from "./routes/garage.js"; // NEW
+import { appRouter } from "./routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// -----------------------------
-// Auth config (scoped to protected /api/* parts)
-// -----------------------------
-const BASIC_USER = process.env.BASIC_AUTH_USER || "";
-const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
-const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
-
-// Public exceptions under /api/* (exact or prefix)
-function isApiPublicPath(p: string) {
-  return (
-    p === "/health" ||
-    p === "/tech/health" ||
-    p.startsWith("/garage/") // ⬅ allow public Client Garage API
-  );
-}
-
-function requireBasicAuthForApi(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) {
-  if (!authEnabled) return next();
-  if (isApiPublicPath(req.path)) return next();
-
-  const hdr = req.headers.authorization || "";
-  if (!hdr.startsWith("Basic ")) {
-    res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
-    return res.status(401).send("Authentication required");
-  }
-  const b64 = hdr.slice("Basic ".length).trim();
-  const [u, p] = Buffer.from(b64, "base64").toString().split(":", 2);
-  if (u === BASIC_USER && p === BASIC_PASS) return next();
-
-  res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
-  return res.status(401).send("Invalid credentials");
-}
-
-// body + cors (before routers)
+// ----------------------------------------------------
+// Core app middleware (apply early)
+// ----------------------------------------------------
 app.use(express.json({ limit: "5mb" }));
 app.use(cors());
 
-// req_id middleware (forwardable header)
+// Request ID (propagate/correlate)
 app.use((req, res, next) => {
   const hdr = req.headers["x-request-id"];
   const rid = (Array.isArray(hdr) ? hdr[0] : hdr) || randomUUID();
@@ -64,16 +30,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// -----------------------------
-// Health + diag
-// -----------------------------
+// ----------------------------------------------------
+// Health + diagnostics (public)
+// ----------------------------------------------------
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
-app.get("/api/health", (_req, res) => res.json({ ok: true })); // public
-app.get("/api/tech/health", (_req, res) => res.json({ ok: true })); // public
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
 
 app.get("/admin/diag", (req, res) => {
   const key = process.env.DIAG_KEY || "";
   if (key && req.query.key !== key) return res.status(403).json({ error: "forbidden" });
+
   const tryRead = (p: string, n = 200) => {
     try {
       const s = fs.readFileSync(p, "utf8");
@@ -95,24 +62,65 @@ app.get("/admin/diag", (req, res) => {
   });
 });
 
-// -----------------------------
-// PUBLIC API (no auth): Garage + public health
-// -----------------------------
-app.use("/api/garage", garageRouter); // ⬅ now live and public
+// ----------------------------------------------------
+// Public Client Garage API (no Basic auth)
+//   - POST /api/garage/vehicles
+//   - GET  /api/garage/vehicles?owner_email=...
+// ----------------------------------------------------
+app.use("/api/garage", garageRouter);
 
-// -----------------------------
-// PROTECTED API (auth): chat + tech tools
-// -----------------------------
-app.use("/api", requireBasicAuthForApi); // apply auth for remaining /api/*
+// ----------------------------------------------------
+// Basic auth for the rest of /api/* (except the public ones above)
+// ----------------------------------------------------
+const BASIC_USER = process.env.BASIC_AUTH_USER || "";
+const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
+const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
+
+// Paths under /api/* that remain public even if auth is enabled.
+// NOTE: Because we mounted /api/garage above (before auth), it is already public.
+// We keep these here for explicit clarity & future additions.
+const API_PUBLIC_PATHS = new Set<string>([
+  "/health",
+  "/tech/health",
+]);
+
+function requireBasicAuthForApi(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  if (!authEnabled) return next();
+
+  // When mounted at /api, req.path is the part AFTER "/api"
+  if (API_PUBLIC_PATHS.has(req.path)) return next();
+
+  const hdr = req.headers.authorization || "";
+  if (!hdr.startsWith("Basic ")) {
+    res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
+    return res.status(401).send("Authentication required");
+  }
+  const b64 = hdr.slice("Basic ".length).trim();
+  const [u, p] = Buffer.from(b64, "base64").toString().split(":", 2);
+  if (u === BASIC_USER && p === BASIC_PASS) return next();
+
+  res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
+  return res.status(401).send("Invalid credentials");
+}
+
+// Attach the Basic-auth gate for all remaining /api/* routes
+app.use("/api", requireBasicAuthForApi);
+
+// Auth-protected routers
 app.use("/api", chatRouter);
 app.use("/api/tech", techRouter);
 
-// Non-versioned utility router (legacy)
+// Legacy / misc app router (v1 namespace kept)
 app.use("/v1", appRouter);
 
-// -----------------------------
-// Static site (tech-gateway public assets; homepage is served by nginx separately)
-// -----------------------------
+// ----------------------------------------------------
+// Static site (tech portal UI served by this service)
+// NOTE: Public homepage is served by nginx separately.
+// ----------------------------------------------------
 app.use("/", express.static(path.join(__dirname, "public")));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 

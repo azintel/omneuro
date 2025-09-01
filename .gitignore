@@ -11,4 +11,5 @@ apps/tech-gateway/*.db
 AWSCLIV2.pkg
 .secrets/
 apps/tech-gateway/dist/
-apps/**/dist/
+apps/**/dist/.DS_Store
+apps/**/.DS_Store
