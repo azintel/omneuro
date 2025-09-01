@@ -13,3 +13,8 @@ AWSCLIV2.pkg
 apps/tech-gateway/dist/
 apps/**/dist/.DS_Store
 apps/**/.DS_Store
+# macOS Finder
+.DS_Store
+
+# NPM artifacts
+package-lock.json
