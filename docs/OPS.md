@@ -1,92 +1,106 @@
 # OPS.md
 
-## Omneuro Operations Overview
+## Purpose
+Operations practices for Omneuro / JuiceJunkiez.  
+This file captures the lessons, defaults, and recovery patterns that keep our infra stable.  
+Every section exists because we broke it once and had to fix it.  
 
-This file captures the high-level operational state of our production environment.  
-It is designed to prevent context loss: all essential non-secret infrastructure details live here.
-
----
-
-### 1. Instance, User & Repo
-
-- **EC2 Instance ID:** `i-011c79fffa7af9e27`  
-- **Primary user context:** **All operational commands run as `ubuntu`** using `sudo -u ubuntu -- bash -lc '…'` in SSM.  
-- **Repo location (server):** `/home/ubuntu/omneuro` (equivalently `~/omneuro` for user `ubuntu`).  
-- **Security Groups:** `sg-0de027ba0663a9c57` (80/443 open; admin ports to restricted IPs)
+Ops rules are not optional. They are the playbook.  
 
 ---
 
-### 2. DNS (juicejunkiez.com)
+## Environments
 
-- **HostedZoneId:** `Z07470533F6JKXTF8S7GO`  
-- **Elastic IP:** `3.16.53.108` (us-east-2)  
-- **Records**
-  | Name                    | Type | TTL | Target        | Notes                         |
-  |-------------------------|------|-----|---------------|-------------------------------|
-  | `tech.juicejunkiez.com` | A    | 60  | `3.16.53.108` | Tech portal (nginx → gateway) |
-
-- **Registrar nameservers**
-  - `ns-1046.awsdns-02.org`
-  - `ns-2021.awsdns-60.co.uk`
-  - `ns-350.awsdns-43.com`
-  - `ns-670.awsdns-19.net`
+- **AWS EC2**: Core services (brain-api, tech-gateway) run on a single EC2 host with PM2.  
+- **Ubuntu user**: All commands run as `ubuntu` with `sudo`. Never stay as `ssm-user`.  
+- **Home directory layout**:
+  - `/home/ubuntu/omneuro` – Git repo root.
+  - `/var/www/juicejunkiez.com` – Static homepage root.  
+- **Domains**:
+  - `juicejunkiez.com` – Public homepage (no password).  
+  - `tech.juicejunkiez.com` – Tech portal + Repairbot (password-protected).  
 
 ---
 
-### 3. TLS
+## Deploy & Redeploy
 
-- **Issuer:** Let’s Encrypt  
-- **Cert path:** `/etc/letsencrypt/live/tech.juicejunkiez.com/fullchain.pem`  
-- **Key path:** `/etc/letsencrypt/live/tech.juicejunkiez.com/privkey.pem`  
-- **Renewal:** `certbot.timer` (systemd)
-
----
-
-### 4. Nginx
-
-- **Enabled site:** `/etc/nginx/sites-enabled/tech.juicejunkiez.com`  
-- **Upstream:** `http://127.0.0.1:8092` (tech-gateway)  
-- **Local health endpoint:** `/nginx-health` → 200
+- **Always pull fresh**: `git fetch && git reset --hard origin/main`.  
+- **Scripts executable**: Redeploy script (`scripts/04-redeploy.sh`) must `chmod +x` itself after pull.  
+- **PM2 reload**: Apps (`brain-api`, `tech-gateway`) are restarted via `ecosystem.config.cjs`.  
+- **Static homepage**: Synced from repo (`apps/homepage/public/`) to `/var/www/juicejunkiez.com`.  
+- **Health checks**: Run after every redeploy. Each service/page must pass before completion.  
 
 ---
 
-### 5. Services (Ports & Health)
+## Health Checks
 
-- **tech-gateway**
-  - Port: `8092`
-  - Health: `GET /healthz`, `GET /api/tech/health`
-  - Public: `https://tech.juicejunkiez.com` (nginx → gateway)
+Every service and site publishes a health endpoint:
 
-- **brain-api**
-  - Port: `8081`
-  - Health: `GET /healthz`
-  - Access: internal (gateway → brain-api)
+- **Brain API**: `http://localhost:8081/healthz`  
+- **Tech Gateway**: `http://localhost:8092/healthz`, `/api/health`, `/api/tech/health`  
+- **Nginx sites**:
+  - `https://juicejunkiez.com/nginx-health` – static homepage
+  - `https://tech.juicejunkiez.com/healthz` – tech portal (proxied to Node)  
 
----
-
-### 6. Process Manager
-
-- **PM2 HOME (target):** `/home/ubuntu/.pm2` (owned by `ubuntu:ubuntu`)  
-- **Discovery:**
-  ```bash
-  sudo -u ubuntu -- bash -lc 'PM2_HOME=/home/ubuntu/.pm2 pm2 jlist'
-  ```
+Health checks are canonical. They retry with backoff. Failures block deploy.  
 
 ---
 
-### 7. Logs
+## TLS / DNS
 
-- **Nginx:** `/var/log/nginx/access.log`, `/var/log/nginx/error.log`  
-- **PM2:** `/home/ubuntu/.pm2/logs/`  
-- **Rotation:** logrotate / pm2-logrotate
+- **Route53**: `juicejunkiez.com` + `www.juicejunkiez.com` A records point to EC2 Elastic IP.  
+- **Certbot**: Certificates issued via `certbot --nginx`.  
+- **Auto-renew**: Cron/systemd handles renewal. Test with `certbot renew --dry-run`.  
+- **Redirects**:
+  - `www.juicejunkiez.com` → `juicejunkiez.com`  
+  - All HTTP → HTTPS  
+
+---
+
+## Permissions
+
+- **Repo scripts**: Must stay executable (`chmod +x`).  
+- **Static homepage**: Owned by `www-data:www-data`.  
+- **Nginx configs**: `/etc/nginx/sites-available/*` symlinked into `/etc/nginx/sites-enabled/`.  
+- **Fixes**: If perms drift, run `chown -R www-data:www-data /var/www/juicejunkiez.com` and reset.  
 
 ---
 
-### 8. Runbook Links
+## Secrets
 
-- `RUNBOOK.md` → deploy/restart/rollback steps  
-- `OBSERVABILITY.md` → monitoring + metrics  
-- `CHECKLISTS.md` → pre-/post-deploy, incident response  
-- `deploy-ops.md` → SSM patterns and redeploy script usage  
+- **AWS SSM** is the only source of secrets (see `SECRETS.md`).  
+- **OpenAI API key**: `/omneuro/openai/api_key` (SecureString).  
+- **Other keys**: Google client ID/secret, Telnyx key, Stripe keys (future).  
+- **Never in Git**. Never in local configs.  
 
 ---
+
+## Debug Patterns
+
+- **Start with IAM + region**: Most SSM issues are missing perms or wrong region.  
+- **Curl the healthz**: Always test endpoint directly before assuming code broke.  
+- **Logs before code**: PM2 logs are the first stop, not code edits.  
+- **Check perms**: 90% of homepage/NGINX failures were file ownership or chmod.  
+
+---
+
+## Documentation Discipline
+
+- **Single-block rule**: Docs must always be output in one block to avoid spill/mix.  
+- **Cross-link**: OPS, RULES, OBSERVABILITY, RUNBOOK, and CHECKLISTS must point to each other.  
+- **No drift**: Every new lesson goes straight into docs.  
+
+---
+
+## Cross-References
+
+- **RULES.md** – Non-negotiable rules (dev + ops).  
+- **OBSERVABILITY.md** – Log groups, tracing, metrics.  
+- **RUNBOOK.md** – Recovery actions for failures.  
+- **CHECKLISTS.md** – Step-by-step deploy/debug sanity checks.  
+- **SECRETS.md** – Canonical list of SSM paths.  
+
+---
+
+✅ Ops are codified here so we don’t repeat mistakes.  
+If it isn’t in `OPS.md`, it didn’t happen.  
