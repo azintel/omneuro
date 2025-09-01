@@ -1,3 +1,4 @@
+// apps/brain-api/server.js
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -15,7 +16,9 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(bodyParser.json({ limit: '2mb' }));
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+// Canonical + alias health endpoints
+app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/healthz', (_req, res) => res.json({ ok: true })); // ⬅ added to satisfy ops checks
 
 app.use('/v1/google/sheets', sheetsRoutes);
 app.use('/v1/google/docs', docsRoutes);
@@ -24,7 +27,6 @@ app.use('/v1/battery', batteryRoutes);
 app.use('/v1/admin', adminRoutes);
 
 import crypto from 'crypto';
-
 const ADMIN_TOKEN = (process.env.ADMIN_TOKEN || '').trim();
 
 function bearer(req) {
@@ -39,9 +41,7 @@ app.post('/v1/admin/notify/day', async (req, res) => {
   const preview = (recipients || []).slice(0, 10).map(r => ({
     id: crypto.randomUUID(),
     to: r.phone || '',
-    text: template
-      .replace('{name}', r.name || '')
-      .replace('{time}', r.time || '')
+    text: template.replace('{name}', r.name || '').replace('{time}', r.time || '')
   }));
   if (dry_run || !telnyxReady) return res.json({ ok: true, dry_run: true, telnyx_ready: telnyxReady, count: recipients.length, preview });
   return res.json({ ok: true, enqueued: recipients.length, telnyx_ready: telnyxReady });
@@ -65,7 +65,7 @@ function listAppRoutes(router) {
   return out;
 }
 
-app.get('/__routes', (req, res) => {
+app.get('/__routes', (_req, res) => {
   res.json({ ok: true, routes: listAppRoutes(app._router) });
 });
 

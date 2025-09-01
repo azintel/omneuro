@@ -9,28 +9,34 @@ import { appRouter } from "./routes.js";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import chatRouter from "./routes/chat.js";
+import garageRouter from "./routes/garage.js"; // ⬅ NEW
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // -----------------------------
-// Auth config (scoped to /api/*)
+// Auth config (scoped to protected /api/* parts)
 // -----------------------------
 const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Paths under /api/* that should remain public (health checks, etc.)
-const API_PUBLIC_PATHS = new Set<string>([
-  "/health",
-  "/tech/health",
-]);
+// Public exceptions under /api/* (exact or prefix)
+function isApiPublicPath(p: string) {
+  return (
+    p === "/health" ||
+    p === "/tech/health" ||
+    p.startsWith("/garage/") // ⬅ allow public Client Garage API
+  );
+}
 
-function requireBasicAuthForApi(req: express.Request, res: express.Response, next: express.NextFunction) {
+function requireBasicAuthForApi(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
   if (!authEnabled) return next();
-
-  // When mounted at /api, req.path is the path AFTER "/api"
-  if (API_PUBLIC_PATHS.has(req.path)) return next();
+  if (isApiPublicPath(req.path)) return next();
 
   const hdr = req.headers.authorization || "";
   if (!hdr.startsWith("Basic ")) {
@@ -45,15 +51,7 @@ function requireBasicAuthForApi(req: express.Request, res: express.Response, nex
   return res.status(401).send("Invalid credentials");
 }
 
-// -----------------------------
-// Routers (chat first, as before)
-// -----------------------------
-app.use("/api", requireBasicAuthForApi); // protect /api/* except public paths above
-
-// chatrouter
-app.use("/api", chatRouter);
-
-// body + cors
+// body + cors (before routers)
 app.use(express.json({ limit: "5mb" }));
 app.use(cors());
 
@@ -66,10 +64,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// basic health + diag
+// -----------------------------
+// Health + diag
+// -----------------------------
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
-app.get("/api/health", (_req, res) => res.json({ ok: true }));     // alias for /api/health
-app.get("/api/tech/health", (_req, res) => res.json({ ok: true })); // alias for /api/tech/health
+app.get("/api/health", (_req, res) => res.json({ ok: true })); // public
+app.get("/api/tech/health", (_req, res) => res.json({ ok: true })); // public
+
 app.get("/admin/diag", (req, res) => {
   const key = process.env.DIAG_KEY || "";
   if (key && req.query.key !== key) return res.status(403).json({ error: "forbidden" });
@@ -94,11 +95,24 @@ app.get("/admin/diag", (req, res) => {
   });
 });
 
-// app routers
+// -----------------------------
+// PUBLIC API (no auth): Garage + public health
+// -----------------------------
+app.use("/api/garage", garageRouter); // ⬅ now live and public
+
+// -----------------------------
+// PROTECTED API (auth): chat + tech tools
+// -----------------------------
+app.use("/api", requireBasicAuthForApi); // apply auth for remaining /api/*
+app.use("/api", chatRouter);
 app.use("/api/tech", techRouter);
+
+// Non-versioned utility router (legacy)
 app.use("/v1", appRouter);
 
-// static (public homepage + assets)
+// -----------------------------
+// Static site (tech-gateway public assets; homepage is served by nginx separately)
+// -----------------------------
 app.use("/", express.static(path.join(__dirname, "public")));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
