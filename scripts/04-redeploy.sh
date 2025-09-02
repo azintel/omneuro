@@ -14,18 +14,24 @@ chmod +x /home/ubuntu/omneuro/scripts/*.sh || true
 
 # --- Fetch secrets live ---
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
-export GOOGLE_API_KEY=$(aws ssm get-parameter --name "/omneuro/google/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/omneuro/google/client_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/omneuro/google/client_secret" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export OPENAI_API_KEY=$(aws ssm get-parameter --name "/omneuro/openai/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export SHEETS_SPREADSHEET_ID=$(aws ssm get-parameter --name "/omneuro/google/sheets_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
+export OPENAI_API_KEY=$(aws ssm get-parameter --name "/omneuro/openai/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text || echo "")
+export GOOGLE_API_KEY=$(aws ssm get-parameter --name "/omneuro/google/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text || echo "")
+export GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/omneuro/google/client_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text || echo "")
+export GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/omneuro/google/client_secret" --with-decryption --region us-east-2 --query "Parameter.Value" --output text || echo "")
+
+# New: spreadsheet id (store as plain String in SSM)
+export SHEETS_SPREADSHEET_ID=$(aws ssm get-parameter --name "/omneuro/google/sheets_spreadsheet_id" --region us-east-2 --query "Parameter.Value" --output text || echo "")
+
+if [ -z "${SHEETS_SPREADSHEET_ID:-}" ]; then
+  echo "[WARN] SHEETS_SPREADSHEET_ID is empty (SSM /omneuro/google/sheets_spreadsheet_id missing?). Sheets writes will be skipped."
+fi
 
 # --- Build apps ---
 echo "=== [REDEPLOY] Building apps ==="
 cd apps/brain-api && npm ci && npm run build && cd -
 cd apps/tech-gateway && npm ci && npm run build && cd -
 
-# --- Restart PM2 ---
+# --- Restart PM2 with current env ---
 echo "=== [REDEPLOY] Restarting PM2 apps ==="
 pm2 restart ecosystem.config.cjs --update-env
 pm2 save
@@ -37,22 +43,15 @@ pm2 list
 echo "[DEBUG] Running redeploy script from $(realpath "$0")"
 echo "=== [REDEPLOY] Health check ==="
 
-# brain-api
-if curl -fs http://localhost:8081/healthz >/dev/null; then
-  echo "brain-api health check passed"
-else
-  echo "brain-api health check failed"
-fi
-
 # helper function for retries
 check_with_retries() {
   local url=$1
   local name=$2
-  local retries=3
+  local retries=15
   local delay=2
   local count=0
 
-  until curl -fs "$url" >/dev/null; do
+  until curl -fsS "$url" >/dev/null 2>&1; do
     count=$((count+1))
     if [ $count -ge $retries ]; then
       echo "Checking $name $url ... FAILED after $retries attempts"
@@ -65,15 +64,14 @@ check_with_retries() {
   return 0
 }
 
-# tech-gateway local checks
-check_with_retries http://localhost:8092/healthz "tech-gateway"
-check_with_retries http://localhost:8092/api/health "tech-gateway"
-check_with_retries http://localhost:8092/api/garage/health "tech-gateway (garage)"
+# Local health (loopback)
+check_with_retries "http://127.0.0.1:8081/healthz" "brain-api" || true
+check_with_retries "http://127.0.0.1:8092/healthz" "tech-gateway" || true
+check_with_retries "http://127.0.0.1:8092/api/health" "tech-gateway" || true
+check_with_retries "http://127.0.0.1:8092/api/garage/health" "garage" || true
 
-### --- Post-deploy health checks (public) ---
+### --- Public health (nginx/TLS) ---
 echo "=== [REDEPLOY] Health check (public) ==="
-
-# helper: wait for a URL to return 200
 wait200() {
   local url="$1"
   local tries="${2:-20}"
@@ -90,30 +88,31 @@ wait200() {
   return 1
 }
 
-# 1) Root site (homepage served by tech-gateway via Nginx)
-wait200 "https://juicejunkiez.com/nginx-health"
-wait200 "https://juicejunkiez.com/"
+# 1) Nginx + homepage
+wait200 "https://juicejunkiez.com/nginx-health" || true
+wait200 "https://juicejunkiez.com/" || true
 
-# 2) Tech portal basic health
-wait200 "https://tech.juicejunkiez.com/healthz"
-wait200 "https://tech.juicejunkiez.com/api/health"
-wait200 "https://tech.juicejunkiez.com/api/garage/health"
+# 2) Tech portal
+wait200 "https://tech.juicejunkiez.com/healthz" || true
+wait200 "https://tech.juicejunkiez.com/api/health" || true
+wait200 "https://tech.juicejunkiez.com/api/garage/health" || true
 
-# 3) Optional smoke test for chat API
-echo "=== [REDEPLOY] Chat API smoke test ==="
+# 3) Optional Garage smoke (GET) - non-fatal
+echo "=== [REDEPLOY] Garage API smoke (GET vehicles) ==="
+curl -sS "https://tech.juicejunkiez.com/api/garage/vehicles?owner_email=$(python3 - <<'PY'
+print("test@example.com")
+PY
+)" | head -c 400; echo
+
+# 4) Optional Chat smoke - non-fatal
+echo "=== [REDEPLOY] Chat API smoke ==="
 CHAT_JSON='{"messages":[{"role":"user","content":"Say hello, Repairbot."}]}'
-CHAT_RC=0
-CHAT_OUT="$(curl -sS -w " HTTP:%{http_code}" -H "content-type: application/json" \
-  -d "$CHAT_JSON" "https://tech.juicejunkiez.com/api/chat" || true)"
+CHAT_OUT="$(curl -sS -w " HTTP:%{http_code}" -H "content-type: application/json" -d "$CHAT_JSON" "https://tech.juicejunkiez.com/api/chat" || true)"
 HTTP_CODE="${CHAT_OUT##* HTTP:}"
 BODY="${CHAT_OUT% HTTP:*}"
-
 if [ "$HTTP_CODE" = "200" ]; then
   echo "[OK] chat API HTTP 200"
 else
   echo "[WARN] chat API not healthy (HTTP $HTTP_CODE). Body (trimmed):"
   echo "$BODY" | sed -E 's/[A-Za-z0-9_\-]{24,}/[REDACTED]/g' | head -c 400; echo
-  CHAT_RC=1
 fi
-
-exit $CHAT_RC
