@@ -1,16 +1,15 @@
 // apps/tech-gateway/src/server.ts
+
+import techRouter from "./routes/tech.js";
 import cors from "cors";
 import express from "express";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { appRouter } from "./routes.js";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
-
-import techRouter from "./routes/tech.js";
 import chatRouter from "./routes/chat.js";
-import garageRouter from "./routes/garage.js";   // << add
-
-import { appRouter } from "./routes.js";
+import garageRouter from "./routes/garage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -22,22 +21,15 @@ const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Paths under /api/* that should remain public
+// Paths under /api/* that should remain public (health checks, etc.)
 const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
-  "/garage/health",     // << add
-  "/garage/vehicles",   // << allow POST/GET for public garage form
+  "/garage/health",
 ]);
 
-function requireBasicAuthForApi(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) {
+function requireBasicAuthForApi(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!authEnabled) return next();
-
-  // When mounted at /api, req.path is the path AFTER "/api"
   if (API_PUBLIC_PATHS.has(req.path)) return next();
 
   const hdr = req.headers.authorization || "";
@@ -54,9 +46,12 @@ function requireBasicAuthForApi(
 }
 
 // -----------------------------
-// Middleware ordering
+// Routers
 // -----------------------------
-app.use("/api", requireBasicAuthForApi); // protect /api/* except public paths above
+app.use("/api", requireBasicAuthForApi);
+
+// chat first
+app.use("/api", chatRouter);
 
 // body + cors
 app.use(express.json({ limit: "5mb" }));
@@ -71,10 +66,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// health + diag
+// health
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
+
 app.get("/admin/diag", (req, res) => {
   const key = process.env.DIAG_KEY || "";
   if (key && req.query.key !== key) return res.status(403).json({ error: "forbidden" });
@@ -99,17 +95,12 @@ app.get("/admin/diag", (req, res) => {
   });
 });
 
-// -----------------------------
-// Routers
-// -----------------------------
-app.use("/api", chatRouter);
+// app routers
 app.use("/api/tech", techRouter);
-app.use("/api/garage", garageRouter); // << mount garage
+app.use("/api/garage", garageRouter);
 app.use("/v1", appRouter);
 
-// -----------------------------
-// Static (homepage + assets)
-// -----------------------------
+// static (public homepage + assets)
 app.use("/", express.static(path.join(__dirname, "public")));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
