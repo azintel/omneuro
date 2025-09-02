@@ -18,6 +18,7 @@ export GOOGLE_API_KEY=$(aws ssm get-parameter --name "/omneuro/google/api_key" -
 export GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/omneuro/google/client_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
 export GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/omneuro/google/client_secret" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
 export OPENAI_API_KEY=$(aws ssm get-parameter --name "/omneuro/openai/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
+export SHEETS_SPREADSHEET_ID=$(aws ssm get-parameter --name "/omneuro/google/sheets_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
 
 # --- Build apps ---
 echo "=== [REDEPLOY] Building apps ==="
@@ -64,15 +65,12 @@ check_with_retries() {
   return 0
 }
 
-# tech-gateway (only two real routes: /healthz and /api/health)
-if check_with_retries http://localhost:8092/healthz "tech-gateway" \
-   && check_with_retries http://localhost:8092/api/health "tech-gateway"; then
-  echo "tech-gateway health checks passed"
-else
-  echo "tech-gateway health checks failed"
-fi
+# tech-gateway local checks
+check_with_retries http://localhost:8092/healthz "tech-gateway"
+check_with_retries http://localhost:8092/api/health "tech-gateway"
+check_with_retries http://localhost:8092/api/garage/health "tech-gateway (garage)"
 
-### --- Post-deploy health checks (homepage + tech portal) ---
+### --- Post-deploy health checks (public) ---
 echo "=== [REDEPLOY] Health check (public) ==="
 
 # helper: wait for a URL to return 200
@@ -99,8 +97,9 @@ wait200 "https://juicejunkiez.com/"
 # 2) Tech portal basic health
 wait200 "https://tech.juicejunkiez.com/healthz"
 wait200 "https://tech.juicejunkiez.com/api/health"
+wait200 "https://tech.juicejunkiez.com/api/garage/health"
 
-# 3) Optional smoke test for chat API (expects JSON; masks long tokens in output)
+# 3) Optional smoke test for chat API
 echo "=== [REDEPLOY] Chat API smoke test ==="
 CHAT_JSON='{"messages":[{"role":"user","content":"Say hello, Repairbot."}]}'
 CHAT_RC=0
@@ -117,6 +116,4 @@ else
   CHAT_RC=1
 fi
 
-# Exit non-zero only if the mandatory health endpoints failed
-# (homepage + portal). Chat smoke test is informative but non-fatal for deploys.
 exit $CHAT_RC
