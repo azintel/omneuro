@@ -40,19 +40,33 @@ echo "=== [REDEPLOY] Verifying processes ==="
 pm2 list
 
 echo "=== [REDEPLOY] Local health ==="
-# brain-api
-if curl -fs http://127.0.0.1:8081/healthz >/dev/null; then
-  echo "[OK] brain-api /healthz"
+
+wait_local_200() {
+  local url="$1"
+  local tries="${2:-20}"
+  local delay="${3:-1}"
+  for i in $(seq 1 "$tries"); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "[OK] $url"
+      return 0
+    fi
+    echo "[..] waiting for $url ($i/$tries)"
+    sleep "$delay"
+  done
+  echo "[ERR] $url did not become healthy" >&2
+  return 1
+}
+
+wait_local_200 "http://127.0.0.1:8081/healthz"
+wait_local_200 "http://127.0.0.1:8092/healthz"
+wait_local_200 "http://127.0.0.1:8092/api/health"
+
+# Optional: Garage health (best-effort)
+if curl -fsSI "http://127.0.0.1:8092/api/garage/health" >/dev/null 2>&1; then
+  echo "[OK] garage /api/garage/health"
 else
-  echo "[ERR] brain-api /healthz"
+  echo "[WARN] garage /api/garage/health not ready or not mounted"
 fi
-
-# tech-gateway
-if curl -fs http://127.0.0.1:8092/healthz   >/dev/null; then echo "[OK] tech-gateway /healthz"; else echo "[ERR] tech-gateway /healthz"; fi
-if curl -fs http://127.0.0.1:8092/api/health >/dev/null; then echo "[OK] tech-gateway /api/health"; else echo "[ERR] tech-gateway /api/health"; fi
-HTTP_LINE=$(curl -i -s http://127.0.0.1:8092/api/garage/health | head -n 1 || true)
-echo "[garage] $HTTP_LINE"
-
 echo "=== [REDEPLOY] Public health (best-effort) ==="
 wait200() {
   local url="$1"; local tries="${2:-20}"; local delay="${3:-2}"
