@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Customer Garage | Juice Junkiez</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="wrap">
+    <h1>Customer Garage</h1>
+    <p class="muted">Add a vehicle and view your saved rides.</p>
+  </header>
+
+  <main class="wrap grid">
+    <section class="card">
+      <h2>Add Vehicle</h2>
+      <form id="addForm">
+        <label>Email <input type="email" name="owner_email" required placeholder="you@example.com" /></label>
+        <label>Make <input type="text" name="make" required placeholder="Begode" /></label>
+        <label>Model <input type="text" name="model" required placeholder="Master" /></label>
+        <label>Nickname <input type="text" name="nickname" placeholder="(optional)" /></label>
+        <label>Notes <textarea name="notes" rows="3" placeholder="(optional)"></textarea></label>
+        <button type="submit">Save Vehicle</button>
+      </form>
+      <div id="addMsg" class="msg" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <h2>My Vehicles</h2>
+      <form id="listForm" class="inline">
+        <input type="email" name="owner_email" required placeholder="you@example.com" />
+        <button type="submit">Load</button>
+      </form>
+      <div id="listMsg" class="msg" aria-live="polite"></div>
+      <ul id="vehicleList" class="list"></ul>
+    </section>
+  </main>
+
+  <footer class="wrap muted">
+    <small>Need help? <a href="mailto:support@juicejunkiez.com">Contact support</a>.</small>
+  </footer>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
