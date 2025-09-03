@@ -1,15 +1,16 @@
 // apps/tech-gateway/src/server.ts
 
 import techRouter from "./routes/tech.js";
+import garageRouter from "./routes/garage.js";
+import chatRouter from "./routes/chat.js";
+
 import cors from "cors";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { appRouter } from "./routes.js";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import chatRouter from "./routes/chat.js";
-import garageRouter from "./routes/garage.js";
+import { appRouter } from "./routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -21,11 +22,12 @@ const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Paths under /api/* that should remain public (health checks, etc.)
+// Paths under /api/* that should remain public (health checks, public APIs, etc.)
 const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
+  "/garage/vehicles" // allow client page to POST/GET without Basic Auth
 ]);
 
 function requireBasicAuthForApi(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -46,18 +48,11 @@ function requireBasicAuthForApi(req: express.Request, res: express.Response, nex
 }
 
 // -----------------------------
-// Routers
+// Middlewares (body, cors, req_id)
 // -----------------------------
-app.use("/api", requireBasicAuthForApi);
-
-// chat first
-app.use("/api", chatRouter);
-
-// body + cors
 app.use(express.json({ limit: "5mb" }));
 app.use(cors());
 
-// req_id middleware
 app.use((req, res, next) => {
   const hdr = req.headers["x-request-id"];
   const rid = (Array.isArray(hdr) ? hdr[0] : hdr) || randomUUID();
@@ -66,7 +61,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// health
+// -----------------------------
+// Health + admin diag
+// -----------------------------
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
@@ -95,7 +92,13 @@ app.get("/admin/diag", (req, res) => {
   });
 });
 
-// app routers
+// -----------------------------
+// Protect /api/* (but after we declare which paths are public)
+// -----------------------------
+app.use("/api", requireBasicAuthForApi);
+
+// Routers (order matters only for /api/* scope)
+app.use("/api", chatRouter);
 app.use("/api/tech", techRouter);
 app.use("/api/garage", garageRouter);
 app.use("/v1", appRouter);
