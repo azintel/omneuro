@@ -19,17 +19,15 @@ module.exports = {
         NODE_ENV: 'production',
         BRAIN_API_URL: 'http://localhost:8081',
 
-        // SSM-backed config
+        // AWS + OpenAI keys
         AWS_REGION: 'us-east-2',
-
-        // OpenAI key path already used elsewhere
         OMNEURO_OPENAI_API_KEY_PARAM: '/omneuro/openai/api_key',
 
         // Google Service Account JSON (SSM SecureString)
         OMNEURO_GOOGLE_SA_PARAM: '/omneuro/google/sa_json',
 
-        // Spreadsheet ID will be injected from redeploy (exported env)
-        SHEETS_SPREADSHEET_ID: process.env.SHEETS_SPREADSHEET_ID || '',
+        // Spreadsheet ID (pulled via redeploy + env injection)
+        SHEETS_SPREADSHEET_ID: process.env.SHEETS_SPREADSHEET_ID,
       },
     },
   ],
