@@ -50,9 +50,9 @@ echo "=== [REDEPLOY] Build artifacts sanity ==="
 ls -1 apps/tech-gateway/dist/{db,routes,server}.js 2>/dev/null || true
 ls -1 apps/brain-api/dist/server.js 2>/dev/null || true
 
-# --- Restart PM2 with updated env ---
+# --- Restart PM2 with updated env (re-read ecosystem) ---
 echo "=== [REDEPLOY] Restarting PM2 apps ==="
-pm2 restart ecosystem.config.cjs --update-env
+pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 
 # --- Verify PM2 env received SHEETS_SPREADSHEET_ID ---
