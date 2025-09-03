@@ -65,6 +65,10 @@ pm2 save
 echo "=== [REDEPLOY] Check PM2 env ==="
 pm2 jlist | node -e 'const a=JSON.parse(require("fs").readFileSync(0,"utf8")); const p=a.find(x=>x.name==="tech-gateway"); console.log("SHEETS_SPREADSHEET_ID in PM2:", p?.pm2_env?.env?.SHEETS_SPREADSHEET_ID ?? "<unset>");'
 
+echo "=== [REDEPLOY] Sync homepage to web root ==="
+sudo mkdir -p /var/www/juicejunkiez.com
+sudo rsync -av --delete apps/homepage/public/ /var/www/juicejunkiez.com/
+
 echo "=== [REDEPLOY] Local health (with retries) ==="
 # Wait for tech-gateway to bind; avoid false negatives
 tries=20
