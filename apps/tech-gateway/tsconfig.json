@@ -1,22 +1,18 @@
 {
   "compilerOptions": {
-    // File Layout
     "rootDir": "src",
     "outDir": "dist",
 
-    // Environment
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
 
-    // Outputs
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
 
-    // Type checking / style
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -24,7 +20,7 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "noUncheckedSideEffectImports": true,
+
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true
   },
