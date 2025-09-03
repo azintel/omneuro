@@ -14,11 +14,24 @@ chmod +x /home/ubuntu/omneuro/scripts/*.sh || true
 
 # --- Fetch secrets live ---
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
-export GOOGLE_API_KEY=$(aws ssm get-parameter --name "/omneuro/google/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/omneuro/google/client_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/omneuro/google/client_secret" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export OPENAI_API_KEY=$(aws ssm get-parameter --name "/omneuro/openai/api_key" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
-export SHEETS_SPREADSHEET_ID=$(aws ssm get-parameter --name "/omneuro/google/sheets_spreadsheet_id" --with-decryption --region us-east-2 --query "Parameter.Value" --output text)
+export AWS_REGION="us-east-2"
+
+getp () {
+  local name="$1"
+  aws ssm get-parameter --name "$name" --with-decryption --region "$AWS_REGION" --query "Parameter.Value" --output text
+}
+
+export GOOGLE_API_KEY="$(getp "/omneuro/google/api_key" || true)"
+export GOOGLE_CLIENT_ID="$(getp "/omneuro/google/client_id" || true)"
+export GOOGLE_CLIENT_SECRET="$(getp "/omneuro/google/client_secret" || true)"
+export OPENAI_API_KEY="$(getp "/omneuro/openai/api_key" || true)"
+export SHEETS_SPREADSHEET_ID="$(getp "/omneuro/google/sheets_spreadsheet_id" || true)"
+
+if [ -z "${SHEETS_SPREADSHEET_ID:-}" ] || [ "${SHEETS_SPREADSHEET_ID}" = "None" ]; then
+  echo "[FATAL] /omneuro/google/sheets_spreadsheet_id is missing/empty in SSM." >&2
+  exit 2
+fi
+echo "[SSM] SHEETS_SPREADSHEET_ID=$(printf '%s' "$SHEETS_SPREADSHEET_ID" | sed -E 's/(.{4}).+(.{4})/\1…\2/')"
 
 # --- Build apps (use local tsc via npm scripts) ---
 echo "=== [REDEPLOY] Building apps (npm ci + npm run build) ==="
@@ -36,17 +49,21 @@ set +x
 echo "=== [REDEPLOY] Build artifacts sanity ==="
 ls -1 apps/tech-gateway/dist/{db,routes,server}.js 2>/dev/null || true
 ls -1 apps/brain-api/dist/server.js 2>/dev/null || true
-test -f apps/tech-gateway/tsconfig.json && echo "[tsconfig] apps/tech-gateway/tsconfig.json"
-test -f apps/brain-api/tsconfig.json && echo "[tsconfig] apps/brain-api/tsconfig.json"
 
-# --- Restart PM2 ---
+# --- Restart PM2 with updated env ---
 echo "=== [REDEPLOY] Restarting PM2 apps ==="
 pm2 restart ecosystem.config.cjs --update-env
 pm2 save
 
-# --- Verify ---
-echo "=== [REDEPLOY] Verifying processes ==="
-pm2 list
+# --- Verify PM2 env received SHEETS_SPREADSHEET_ID ---
+echo "=== [REDEPLOY] Check PM2 env ==="
+# try by name, fall back to id 2 (tech-gateway)
+if pm2 env tech-gateway >/tmp/pm2env.txt 2>/dev/null; then
+  :
+else
+  pm2 env 2 >/tmp/pm2env.txt 2>/dev/null || true
+fi
+grep -E 'SHEETS_SPREADSHEET_ID=' /tmp/pm2env.txt | sed -E 's/(SHEETS_SPREADSHEET_ID=).+/\1[REDACTED]/' || echo "[WARN] SHEETS_SPREADSHEET_ID not found in PM2 env"
 
 # --- Local health checks ---
 echo "=== [REDEPLOY] Local health ==="
@@ -94,7 +111,8 @@ wait200 "https://juicejunkiez.com/"
 wait200 "https://tech.juicejunkiez.com/healthz"
 wait200 "https://tech.juicejunkiez.com/api/health"
 
-# --- Tail last logs for quick glance ---
+# --- Tail last logs once (no hang) ---
 echo "=== [REDEPLOY] Tail last 80 lines of PM2 logs (tech-gateway) ==="
-pm2 logs tech-gateway --lines 80 || true
+pm2 logs tech-gateway --lines 80 --nostream || true
+
 echo "=== [DONE] ==="
