@@ -1,127 +1,90 @@
 # CHECKLISTS.md
 
 ## Purpose
-These checklists are the daily safety rails of Omneuro.  
-They exist because when we skipped steps, things broke.  
-They are meant to be executed as written, not interpreted.  
-
-If something is missing, update this file. If something repeats across projects, move it into `RULES.md`.  
+Step-by-step sanity checks for Omneuro / JuiceJunkiez operations.  
+These lists exist because skipping them cost us hours.  
+Every deploy and debug must follow them.  
 
 ---
 
-## 1. Pre-Deploy Checklist
+## Deploy Checklist
 
-- [ ] **User context:** Run as `ubuntu` (SSM: `sudo -u ubuntu -- bash -lc '…'`).  
-- [ ] **Repo path:** All commands inside `/home/ubuntu/omneuro`.  
-- [ ] Pull latest `main` branch.  
-- [ ] Verify `.secrets/` is intact and ignored in Git.  
-- [ ] Run `chmod +x scripts/*.sh`.  
-- [ ] Validate AWS identity: `aws sts get-caller-identity`.  
-- [ ] Confirm AWS region matches project defaults.  
-- [ ] Ensure SSM agent is running on all target instances.  
-- [ ] Validate fresh tokens/credentials.  
-- [ ] Run unit tests and integration tests locally.  
-- [ ] Run schema contract validation (`SCHEMA.md` alignment).  
-- [ ] Push code and docs updates together (atomic commit).  
+1. **Git sync**
+   - `git fetch origin main`
+   - `git reset --hard origin/main`
+   - Ensure `scripts/*.sh` are executable (`chmod +x scripts/*.sh`).
 
----
+2. **Redeploy**
+   - Run `./scripts/04-redeploy.sh`.
+   - PM2 must restart `brain-api` and `tech-gateway`.
+   - Verify logs show no errors.
 
-## 2. Deploy Checklist
+3. **Static homepage**
+   - Repo path: `apps/homepage/public/index.html`
+   - Deployed to: `/var/www/juicejunkiez.com`
+   - Ensure files owned by `www-data:www-data`.
 
-- [ ] Execute redeploy:
-  ```bash
-  sudo -u ubuntu -- bash -lc '
-  set -euo pipefail
-  cd /home/ubuntu/omneuro
-  ./scripts/04-redeploy.sh
-  '
-  ```
-- [ ] Confirm script retries health checks with backoff.  
-- [ ] Validate ECS/PM2 processes restarted and healthy.  
-- [ ] Verify health endpoints manually:
-  - [ ] brain-api → `/healthz`
-  - [ ] tech-gateway → `/healthz`, `/api/tech/health`
-- [ ] Check CloudWatch logs for each service (no silent failures).  
-- [ ] Post-deploy retro: capture any issues in `RUNBOOK.md`.  
+4. **Nginx config**
+   - `/etc/nginx/sites-available/juicejunkiez.com` → `sites-enabled/juicejunkiez.com`
+   - `/etc/nginx/sites-available/tech.juicejunkiez.com` → `sites-enabled/tech.juicejunkiez.com`
+   - Run `sudo nginx -t && sudo systemctl reload nginx`.
 
----
+5. **TLS**
+   - DNS A record for `juicejunkiez.com` + `www.juicejunkiez.com` points to EC2 Elastic IP.
+   - Certbot: `sudo certbot --nginx -d juicejunkiez.com -d www.juicejunkiez.com`
+   - Verify expiry: `certbot certificates`
+   - Dry-run renew: `certbot renew --dry-run`.
 
-## 3. Debugging Checklist
+6. **Health checks**
+   - `curl -fsS http://127.0.0.1:8081/healthz` – brain-api local
+   - `curl -fsS http://127.0.0.1:8092/healthz` – tech-gateway local
+   - `curl -fsS https://tech.juicejunkiez.com/healthz` – public tech portal
+   - `curl -fsS https://juicejunkiez.com/nginx-health` – public homepage
+   - Expect `200 OK` JSON or plain response.
 
-When something fails:
-
-- [ ] Check IAM permissions first.  
-- [ ] Verify AWS region.  
-- [ ] Confirm tokens are valid.  
-- [ ] Look for logs in CloudWatch.  
-- [ ] If logs missing: fix observability before debugging.  
-- [ ] Curl endpoint directly.  
-- [ ] Compare against schema contracts.  
-- [ ] Roll back to last known good deploy if needed.  
-- [ ] Document fix in `RUNBOOK.md`.  
+7. **Smoke tests**
+   - Chat: POST `https://tech.juicejunkiez.com/api/chat` with `{"messages":[{"role":"user","content":"ping"}]}`
+   - Homepage: `curl -I https://juicejunkiez.com/` returns `200 OK`, no `WWW-Authenticate`.
 
 ---
 
-## 4. Git & Workflow Checklist
+## Debug Checklist
 
-- [ ] Never reset without backup.  
-- [ ] Commit code, scripts, and docs together.  
-- [ ] Review `git diff` before push (no debug or noise).  
-- [ ] Use feature branches; keep `main` stable.  
-- [ ] Ensure ADR exists for major changes.  
-- [ ] Retro captured at sprint end.  
-- [ ] Update README index if new files/docs added.  
+1. **IAM & region**
+   - `aws sts get-caller-identity`
+   - `aws configure get region`
+   - Ensure `AWS_REGION=us-east-2`.
 
----
+2. **Secrets**
+   - Confirm parameter name: `/omneuro/openai/api_key`
+   - `aws ssm get-parameter --name "/omneuro/openai/api_key" --with-decryption`
 
-## 5. Ops Checklist (AWS & Infra)
+3. **PM2**
+   - `pm2 list`
+   - `pm2 logs <app> --lines 200 --nostream`
 
-- [ ] Confirm CloudWatch log groups exist for new services.  
-- [ ] Ensure metrics are auto-publishing.  
-- [ ] Check ECS cluster/task health.  
-- [ ] Validate SSM connectivity before assuming code error.  
-- [ ] Rotate tokens if older than 24h.  
-- [ ] Check for duplicate resources (no “phantom infra”).  
+4. **Nginx**
+   - `nginx -t`
+   - `sudo systemctl reload nginx`
+   - Check site configs for conflicts.
 
----
+5. **Permissions**
+   - Homepage root: `/var/www/juicejunkiez.com`
+   - `www-data:www-data` ownership
+   - `755` dirs, `644` files
 
-## 6. Human–AI Collaboration Checklist
-
-- [ ] Re-sync context before each dev session.  
-- [ ] Confirm commands before executing.  
-- [ ] AI confirms assumptions before suggesting.  
-- [ ] Human confirms outputs before deploying.  
-- [ ] Retro extracted into rules after major cycle.  
-- [ ] Debug chatter stays out of docs.  
-- [ ] If stuck after 3 debug cycles → stop, escalate.  
+6. **Curl endpoints**
+   - Always `curl` local and public endpoints before touching code.
 
 ---
 
-## 7. Runbook Maintenance Checklist
+## Retro Discipline
 
-- [ ] Every failure path must be logged in `RUNBOOK.md`.  
-- [ ] Runbook entries cross-reference rules and checklists.  
-- [ ] If a fix repeats, convert it into a permanent checklist item.  
-- [ ] Keep runbook entries concise and executable.  
-
----
-
-## 8. Cultural Checklist
-
-- [ ] Keep docs spartan: short, clear, referenceable.  
-- [ ] No startup chaos: move professionally.  
-- [ ] Communicate respectfully, leave rope not threats.  
-- [ ] End every sprint with retro + distilled rules.  
+- Every sprint ends with lessons added here.  
+- If a checklist item is skipped and failure results, add a new line.  
+- No deploy without running this list.  
 
 ---
 
-## 9. Non-Negotiables (Added for clarity)
-
-- **Run as `ubuntu`.** Always prefix with `sudo -u ubuntu -- bash -lc '…'` in SSM.  
-- **Use `/home/ubuntu/omneuro`.** Do not run from ad-hoc directories.  
-- **Docs with code.** No deploy without updated docs and contracts.  
-
----
-
-✅ These checklists are living documents.  
-If you skip one, you risk burning cycles we already paid for.  
+✅ These checklists are the operational spine.  
+Follow them, or burn cycles we already paid for.  

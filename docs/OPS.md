@@ -56,6 +56,23 @@ Health checks are canonical. They retry with backoff. Failures block deploy.
   - All HTTP → HTTPS  
 
 ---
+### Homepage (juicejunkiez.com) vs Tech Portal (tech.juicejunkiez.com)
+
+- **Homepage** (`juicejunkiez.com`):
+  - Static files live under `/var/www/juicejunkiez.com`.
+  - Repo source: `apps/homepage/public/`.
+  - Synced via `04-redeploy.sh` → `rsync`.
+  - TLS: `certbot --nginx -d juicejunkiez.com -d www.juicejunkiez.com`.
+
+- **Tech Portal** (`tech.juicejunkiez.com`):
+  - Node/Express app (`apps/tech-gateway`).
+  - Proxied on port `8092`.
+  - Password-protected.
+  - TLS: `certbot --nginx -d tech.juicejunkiez.com`.
+
+**Rule:** homepage must never inherit tech portal auth. If it does, revert nginx config and re-run `certbot`.  
+
+---
 
 ## Permissions
 

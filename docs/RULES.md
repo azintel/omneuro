@@ -24,6 +24,7 @@ Rules are **non-negotiable**. They should be short, direct, and actionable.
 10. **Cross-reference everything** – If a runbook entry, checklist, or rule exists, link it. Don’t fragment knowledge.  
 11. **Single-block discipline** – All doc updates must be output in one fenced block containing the entire file. No plaintext spills, no partials.  
 12. **Repo is the source of truth** – Always scan the repo first before editing code or docs. Never deprecate or overwrite without confirmation.  
+12(b). **No auto-splitting of docs** – When outputting repo documents, always wrap the entire file in one fenced code block. Treat all contents (including `{}`, JSON, CLI snippets, backticks) as literal plaintext. Escape if necessary, but never break into multiple blocks.
 
 ---
 
@@ -37,6 +38,10 @@ Rules are **non-negotiable**. They should be short, direct, and actionable.
 18. **Noise filter discipline** – Retro lessons and chat noise must be distilled into rules, not left raw.  
 19. **Document the fix** – Every resolved error path becomes a runbook entry.  
 20. **One step at a time** – Don’t chain unverified fixes. Validate before moving.  
+20b. - **Repo-first discipline** – Always scan the GitHub repo (`azintel/omneuro`) before editing code or docs.  
+  Never work from memory only. Always check the latest version to avoid deprecating content.  
+20c.**One-block discipline** – Entire document updates must be returned in a single fenced block.  
+  No spilling into multiple blocks or plaintext.  
 
 ---
 
