@@ -50,43 +50,43 @@ echo "=== [REDEPLOY] Build artifacts sanity ==="
 ls -1 apps/tech-gateway/dist/{db,routes,server}.js 2>/dev/null || true
 ls -1 apps/brain-api/dist/server.js 2>/dev/null || true
 
-# --- Restart PM2 with updated env (re-read ecosystem) ---
 echo "=== [REDEPLOY] Restarting PM2 apps ==="
-pm2 startOrReload ecosystem.config.cjs --update-env
+# Always inject the sheet id inline so PM2 captures it
+if [[ -n "${SHEETS_SPREADSHEET_ID:-}" ]]; then
+  SHEETS_SPREADSHEET_ID="$SHEETS_SPREADSHEET_ID" pm2 startOrReload ecosystem.config.cjs --only tech-gateway --update-env
+else
+  echo "[WARN] SHEETS_SPREADSHEET_ID not set in shell; starting tech-gateway without it"
+  pm2 startOrReload ecosystem.config.cjs --only tech-gateway --update-env
+fi
+
+pm2 startOrReload ecosystem.config.cjs --only brain-api --update-env
 pm2 save
 
-# --- Verify PM2 env received SHEETS_SPREADSHEET_ID ---
 echo "=== [REDEPLOY] Check PM2 env ==="
-# try by name, fall back to id 2 (tech-gateway)
-if pm2 env tech-gateway >/tmp/pm2env.txt 2>/dev/null; then
-  :
-else
-  pm2 env 2 >/tmp/pm2env.txt 2>/dev/null || true
-fi
-grep -E 'SHEETS_SPREADSHEET_ID=' /tmp/pm2env.txt | sed -E 's/(SHEETS_SPREADSHEET_ID=).+/\1[REDACTED]/' || echo "[WARN] SHEETS_SPREADSHEET_ID not found in PM2 env"
+pm2 jlist | node -e 'const a=JSON.parse(require("fs").readFileSync(0,"utf8")); const p=a.find(x=>x.name==="tech-gateway"); console.log("SHEETS_SPREADSHEET_ID in PM2:", p?.pm2_env?.env?.SHEETS_SPREADSHEET_ID ?? "<unset>");'
 
-# --- Local health checks ---
-echo "=== [REDEPLOY] Local health ==="
-if curl -fs http://127.0.0.1:8081/healthz >/dev/null; then
-  echo "[OK] brain-api /healthz"
-else
-  echo "[ERR] brain-api /healthz"
-fi
+echo "=== [REDEPLOY] Local health (with retries) ==="
+# Wait for tech-gateway to bind; avoid false negatives
+tries=20
+until curl -fsS http://127.0.0.1:8092/healthz >/dev/null 2>&1; do
+  ((tries--)) || { echo "[ERR] tech-gateway /healthz (local) never came up"; break; }
+  echo "[..] waiting on tech-gateway /healthz ($((20-tries))/20)"
+  sleep 1
+done
 
-if curl -fs http://127.0.0.1:8092/healthz >/dev/null; then
-  echo "[OK] tech-gateway /healthz"
+if curl -fsS http://127.0.0.1:8092/healthz >/dev/null 2>&1; then
+  echo "[OK] tech-gateway /healthz (local)"
 else
-  echo "[ERR] tech-gateway /healthz"
+  echo "[ERR] tech-gateway /healthz (local)"
 fi
 
-if curl -fs http://127.0.0.1:8092/api/health >/dev/null; then
-  echo "[OK] tech-gateway /api/health"
+if curl -fsS http://127.0.0.1:8092/api/health >/dev/null 2>&1; then
+  echo "[OK] tech-gateway /api/health (local)"
 else
-  echo "[ERR] tech-gateway /api/health"
+  echo "[ERR] tech-gateway /api/health (local)"
 fi
 
-echo -n "[garage] "
-curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8092/api/garage/health || true
+echo "[garage] $(curl -i -s http://127.0.0.1:8092/api/garage/health | head -n 1 || true)"
 
 # --- Public health checks (best-effort) ---
 echo "=== [REDEPLOY] Public health (best-effort) ==="
