@@ -26,11 +26,12 @@
   },
   "dependencies": {
     "@aws-sdk/client-ssm": "^3.879.0",
+    "@googleapis/sheets": "^6.1.0",
     "better-sqlite3": "^12.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
-    "googleapis": "^159.0.0",
+    "google-auth-library": "^9.15.1",
     "nanoid": "^5.1.5",
     "zod": "^4.0.17"
   }
