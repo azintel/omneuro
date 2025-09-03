@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8">
+<title>Login • Client Garage</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../garage.css">
+<div class="card" style="max-width:440px;margin:40px auto">
+  <h2>Sign in</h2>
+  <label>Email</label>
+  <input id="email" placeholder="you@example.com">
+  <button id="go">Send Link</button>
+  <p id="msg" class="muted"></p>
+</div>
+<script>
+const API = "/api/garage";
+async function post(u,b){ const r=await fetch(u,{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); if(!r.ok) throw new Error(await r.text()); return r.json();}
+document.getElementById('go').onclick = async ()=>{
+  const email = document.getElementById('email').value.trim();
+  document.getElementById('msg').textContent = "Sending…";
+  try{
+    const out = await post(API + "/auth/request", { email });
+    document.getElementById('msg').textContent = "Check your email for the sign-in link.";
+    if(out.dev_link){ document.getElementById('msg').innerHTML += `<br><a href="${out.dev_link}">Dev sign-in</a>`; }
+  }catch(e){ document.getElementById('msg').textContent = "Error: " + e; }
+};
+</script>

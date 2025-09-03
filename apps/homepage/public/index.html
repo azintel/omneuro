@@ -7,15 +7,8 @@
   <meta name="description" content="Personal Electric Vehicle service, repairs, parts, and accessories. Baltimore, MD." />
   <style>
     :root{
-      --bg:#0a0a0a;         /* near-black */
-      --card:#131313;       /* dark card */
-      --ink:#f5f5f5;        /* primary text */
-      --muted:#b9b9b9;      /* muted text */
-      --line:#242424;       /* borders */
-      --accent:#ffd84d;     /* gold accent */
-      --accent-ink:#1b1b1b; /* text on gold */
-      --radius:14px;
-      --pad:16px;
+      --bg:#0a0a0a;         --card:#131313;       --ink:#f5f5f5;        --muted:#b9b9b9;
+      --line:#242424;       --accent:#ffd84d;     --accent-ink:#1b1b1b; --radius:14px; --pad:16px;
     }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif}
@@ -61,6 +54,7 @@
       <h2><span class="gold">Personal Electric Vehicle</span> Experts</h2>
       <p>Repairs, diagnostics, upgrades, and parts for scooters, EUCs, e-bikes, and more.</p>
       <div class="links">
+        <!-- Absolute URL to tech subdomain so caches and docroot don’t confuse the link -->
         <a class="btn btn--accent" href="https://tech.juicejunkiez.com/garage/">Client Garage</a>
         <a class="btn" href="/shop/">Shop</a>
         <a class="btn" href="https://tech.juicejunkiez.com/">Tech Portal</a>

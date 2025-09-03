@@ -1,63 +1,50 @@
 // apps/tech-gateway/src/lib/ssm.ts
 //
-// Securely load the OpenAI API key from AWS SSM Parameter Store (SecureString).
-// - Defaults to /omneuro/prod/openai/api_key if OMNEURO_OPENAI_API_KEY_PARAM not set
-// - Defaults region to us-east-2 if AWS_REGION not set
-// - Caches in memory to avoid repeated lookups
+// SSM helpers
+// - getOpenAIKey(): backwards-compat convenience for existing code
+// - getParam(name, withDecryption): generic getter used by sheets.ts
 //
-// Requirements (instance role):
-//   ssm:GetParameter on the parameter path
-//   kms:Decrypt on the KMS key used by the SecureString
+// Notes
+// • Region defaults to us-east-2
+// • We log diagnostic context but never leak secret values
+// • NodeNext + TS: keep this as ESM with named exports
 
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 
-const DEFAULT_PARAM = "/omneuro/prod/openai/api_key";
+const DEFAULT_OPENAI_PARAM = "/omneuro/prod/openai/api_key";
 
-let cachedKey: string | null = null;
+let cachedOpenAIKey: string | null = null;
 
-function getRegion(): string {
-  const region = process.env.AWS_REGION || "us-east-2";
+function region(): string {
+  const r = process.env.AWS_REGION || "us-east-2";
   if (!process.env.AWS_REGION) {
-    console.warn(`[ssm] AWS_REGION not set; defaulting to ${region}`);
+    console.warn(`[ssm] AWS_REGION not set; defaulting to ${r}`);
   }
-  return region;
+  return r;
 }
 
-function getParameterName(): string {
-  const name = process.env.OMNEURO_OPENAI_API_KEY_PARAM || DEFAULT_PARAM;
-  if (!process.env.OMNEURO_OPENAI_API_KEY_PARAM) {
-    console.warn(`[ssm] OMNEURO_OPENAI_API_KEY_PARAM not set; using default path: ${DEFAULT_PARAM}`);
-  }
-  return name;
-}
-
-export async function getOpenAIKey(): Promise<string> {
-  if (cachedKey) return cachedKey;
-
-  const region = getRegion();
-  const Name = getParameterName();
-  const ssm = new SSMClient({ region });
-
+/** Generic SSM SecureString/plain getter (no local caching). */
+export async function getParam(name: string, withDecryption = false): Promise<string> {
+  const r = region();
+  const ssm = new SSMClient({ region: r });
   try {
-    const resp = await ssm.send(
-      new GetParameterCommand({
-        Name,
-        WithDecryption: true, // decrypt SecureString server-side
-      })
-    );
-
+    const resp = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: withDecryption }));
     const value = resp.Parameter?.Value;
-    if (!value) {
-      throw new Error(`[ssm] Parameter ${Name} returned no value`);
-    }
-    cachedKey = value;
+    if (!value) throw new Error(`[ssm] Parameter ${name} returned no value`);
     return value;
   } catch (err: any) {
-    // Provide helpful diagnostics without leaking secrets
     const code = err?.name || err?.code || "UnknownError";
     const msg = err?.message || String(err);
-    console.error(`[ssm] get-parameter failed: name=${Name} region=${region} code=${code} msg=${msg}`);
-    // Re-throw a generic error for the route to handle
-    throw new Error("Failed to load OpenAI key from SSM");
+    console.error(`[ssm] get-param failed: name=${name} region=${r} code=${code} msg=${msg}`);
+    throw err;
   }
+}
+
+/** Back-compat helper used by chat code. */
+export async function getOpenAIKey(): Promise<string> {
+  if (cachedOpenAIKey) return cachedOpenAIKey;
+  const name = process.env.OMNEURO_OPENAI_API_KEY_PARAM || DEFAULT_OPENAI_PARAM;
+  const value = await getParam(name, true);
+  cachedOpenAIKey = value;
+  return value;
 }
