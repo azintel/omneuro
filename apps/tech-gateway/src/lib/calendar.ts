@@ -1,37 +1,61 @@
 // apps/tech-gateway/src/lib/calendar.ts
-//
-// Google Calendar helper using monorepo package '@googleapis/calendar'.
-// Env:
-//   GOOGLE_CALENDAR_ID=... (required)
-//   SCHED_TZ=America/New_York (default)
+// Google Calendar helper using the SCOPED package @googleapis/calendar.
 
-import { calendar_v3 } from "@googleapis/calendar";
-import { fromServiceAccountJSON } from "./sheets.js";
+import { calendar, calendar_v3 } from "@googleapis/calendar";
+import { GoogleAuth, OAuth2Client } from "google-auth-library";
+import { getParam } from "../lib/ssm.js";
 
+const SA_PARAM   = process.env.OMNEURO_GOOGLE_SA_PARAM || "/omneuro/google/sa_json";
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || "";
-const SCHED_TZ = process.env.SCHED_TZ || "America/New_York";
+const SCHED_TZ    = process.env.SCHED_TZ || "America/New_York";
 
-export async function createCalendarEvent(opts: {
+async function getCalendar(): Promise<calendar_v3.Calendar> {
+  const saJson = await getParam(SA_PARAM, true);
+  if (!saJson) throw new Error("[calendar] empty SA JSON from SSM");
+  const creds = JSON.parse(saJson);
+
+  // Get a concrete client; then pass that client (not the GoogleAuth wrapper).
+  const auth = new GoogleAuth({
+    credentials: creds,
+    scopes: ["https://www.googleapis.com/auth/calendar"],
+  });
+  const client = (await auth.getClient()) as OAuth2Client | any;
+
+  // Some type versions are picky; cast to any to satisfy the overload.
+  return calendar({ version: "v3", auth: client as any });
+}
+
+export async function createEvent(opts: {
   summary: string;
   description?: string;
-  startLocal: string; // 'YYYY-MM-DDTHH:MM' (no tz)
-  endLocal: string;   // 'YYYY-MM-DDTHH:MM' (no tz)
+  startISO: string;
+  endISO: string;
   attendees?: { email: string; displayName?: string }[];
+  timeZone?: string;
 }) {
-  if (!CALENDAR_ID) throw new Error("GOOGLE_CALENDAR_ID not configured");
+  if (!CALENDAR_ID) {
+    console.warn("[calendar] GOOGLE_CALENDAR_ID not set; skipping calendar write");
+    return null;
+  }
 
-  const auth = await fromServiceAccountJSON(["https://www.googleapis.com/auth/calendar"]);
-  const calendar = new calendar_v3.Calendar({ auth });
+  const cal = await getCalendar();
+  const tz = opts.timeZone || SCHED_TZ;
 
-  const { data } = await calendar.events.insert({
+  const attendees: calendar_v3.Schema$EventAttendee[] = (opts.attendees || []).map(a => ({
+    email: a.email,
+    displayName: a.displayName ?? null, // some d.ts expect string | null
+  }));
+
+  const resp = await cal.events.insert({
     calendarId: CALENDAR_ID,
     requestBody: {
       summary: opts.summary,
-      description: opts.description,
-      start: { dateTime: opts.startLocal, timeZone: SCHED_TZ },
-      end:   { dateTime: opts.endLocal,   timeZone: SCHED_TZ },
-      attendees: opts.attendees,
+      description: opts.description || "",
+      start: { dateTime: opts.startISO, timeZone: tz },
+      end:   { dateTime: opts.endISO,   timeZone: tz },
+      attendees,
     },
   });
-  return data; // includes id
+
+  return resp.data;
 }

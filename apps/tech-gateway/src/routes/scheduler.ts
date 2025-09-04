@@ -1,174 +1,121 @@
 // apps/tech-gateway/src/routes/scheduler.ts
-import { Router } from "express";
-import db from "../db.js";
-import { customAlphabet } from "nanoid";
+import { Router, type Request, type Response } from "express";
+import db from "../lib/db.js";
 import { appendAppointmentRow } from "../lib/sheets.js";
-import { createCalendarEvent } from "../lib/calendar.js";
+import { createEvent } from "../lib/calendar.js";
 
 const router = Router();
-const nid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 12);
 
-const SCHED_TZ = process.env.SCHED_TZ || "America/New_York";
+function minutesToISO(dateStr: string, minutes: number, tz: string): string {
+  // Robust parse (avoid Date multi-arg overload types)
+  const parts = dateStr.split("-");
+  const y = Number(parts[0] ?? 1970);
+  const m = Number(parts[1] ?? 1);
+  const d = Number(parts[2] ?? 1);
 
-function pad2(n: number) { return n < 10 ? `0${n}` : String(n); }
-function toHHMM(minute: number) { return `${pad2(Math.floor(minute/60))}:${pad2(minute%60)}`; }
-function localISO(date_ymd: string, minute: number) { return `${date_ymd}T${toHHMM(minute)}`; }
-function ymd(d: Date) { return d.toISOString().slice(0,10); }
+  const baseUTC = Date.UTC(
+    Number.isFinite(y) ? y : 1970,
+    Number.isFinite(m) ? m - 1 : 0,
+    Number.isFinite(d) ? d : 1,
+    0, 0, 0, 0
+  );
+  const t = new Date(baseUTC + minutes * 60_000);
 
-// ----- techs
-router.post("/techs", (req, res) => {
-  const { name, email, phone } = req.body || {};
-  if (!name) return res.status(400).json({ error: "name required" });
-  const id = nid();
-  db.prepare(`INSERT INTO techs (id,name,email,phone) VALUES (?,?,?,?)`).run(id, name, email ?? null, phone ?? null);
-  res.json({ ok:true, tech:{ id, name, email, phone }});
-});
+  // stable ISO-like (sv-SE) with zone conversion
+  const local = t.toLocaleString("sv-SE", { timeZone: tz, hour12: false });
+  return local.replace(" ", "T");
+}
 
-router.post("/techs/:id/availability", (req,res)=>{
-  const tech_id = req.params.id;
-  const { day_of_week, start_minute, end_minute, capacity = 1 } = req.body || {};
-  if (![0,1,2,3,4,5,6].includes(Number(day_of_week))) return res.status(400).json({ error: "day_of_week 0-6" });
-  if (!(Number.isInteger(start_minute) && Number.isInteger(end_minute) && start_minute < end_minute)) {
-    return res.status(400).json({ error: "invalid minute range" });
-  }
-  const id = nid();
-  db.prepare(`
-    INSERT INTO tech_availability (id,tech_id,day_of_week,start_minute,end_minute,capacity)
-    VALUES (?,?,?,?,?,?)
-  `).run(id, tech_id, day_of_week, start_minute, end_minute, capacity);
-  res.json({ ok:true, availability:{ id, tech_id, day_of_week, start_minute, end_minute, capacity }});
-});
-
-// ----- slots
-router.get("/slots", (req, res) => {
-  const { start, end } = req.query as { start?: string, end?: string };
-  if (!start || !end) return res.status(400).json({ error: "start and end (YYYY-MM-DD) required" });
-
-  const avails = db.prepare(`
-    SELECT ta.*, t.name as tech_name
-    FROM tech_availability ta
-    JOIN techs t ON t.id=ta.tech_id
-    WHERE t.is_active=1
-  `).all() as any[];
-
-  const blackout = db.prepare(`SELECT date_ymd FROM blackout_days`).all().map((r:any)=>r.date_ymd);
-  const appts = db.prepare(`
-    SELECT date_ymd, start_minute, end_minute, tech_id
-    FROM appointments
-    WHERE date_ymd BETWEEN ? AND ? AND status IN ('pending','confirmed')
-  `).all(start, end) as any[];
-
-  const out: any[] = [];
-  const dayMs = 86400000;
-  const startDate = new Date(start + "T00:00:00");
-  const endDate = new Date(end + "T00:00:00");
-
-  for (let d = startDate; d <= endDate; d = new Date(d.getTime()+dayMs)) {
-    const day = ymd(d);
-    if (blackout.includes(day)) continue;
-    const dow = d.getDay();
-
-    const todays = avails.filter(a => a.day_of_week === dow);
-    for (const a of todays) {
-      for (let m=a.start_minute; m < a.end_minute; m+=30) {
-        const slotStart = m, slotEnd = m+30;
-        const used = appts.filter(p =>
-          p.date_ymd === day && p.tech_id === a.tech_id && !(p.end_minute<=slotStart || p.start_minute>=slotEnd)
-        ).length;
-        if (used < a.capacity) {
-          out.push({
-            date_ymd: day,
-            start_minute: slotStart,
-            end_minute: slotEnd,
-            start_hhmm: toHHMM(slotStart),
-            end_hhmm: toHHMM(slotEnd),
-            tech_id: a.tech_id,
-            tech_name: a.tech_name,
-            capacity: a.capacity,
-            used
-          });
-        }
-      }
-    }
-  }
-
-  res.json({ ok:true, items: out });
-});
-
-// ----- create appointment
-router.post("/appointments", async (req,res)=>{
+router.post("/appointments", async (req: Request, res: Response) => {
   try {
-    const { owner_email, tech_id, date_ymd, start_minute, end_minute, notes } = req.body || {};
-    if (!owner_email || !date_ymd || !Number.isInteger(start_minute) || !Number.isInteger(end_minute)) {
-      return res.status(400).json({ error: "owner_email, date_ymd, start_minute, end_minute required" });
+    const b = (req.body ?? {}) as Partial<{
+      date: string;
+      start_minute: number;
+      end_minute: number;
+      owner_email: string;
+      vehicle_id: number;
+      summary?: string;
+      description?: string;
+      attendees?: { email: string; displayName?: string }[];
+    }>;
+
+    const date = String(b.date || "").trim();
+    const start_minute = Number(b.start_minute);
+    const end_minute   = Number(b.end_minute);
+    const owner_email  = String(b.owner_email || "").trim().toLowerCase();
+    const vehicle_id   = Number(b.vehicle_id);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: "invalid date" });
+    }
+    if (!Number.isFinite(start_minute) || !Number.isFinite(end_minute) ||
+        start_minute < 0 || end_minute <= start_minute || end_minute > 1440) {
+      return res.status(400).json({ error: "invalid start/end minutes" });
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner_email)) {
+      return res.status(400).json({ error: "invalid owner_email" });
+    }
+    if (!Number.isFinite(vehicle_id) || vehicle_id <= 0) {
+      return res.status(400).json({ error: "invalid vehicle_id" });
     }
 
-    const avail = db.prepare(`
-      SELECT ta.capacity, t.name as tech_name
-      FROM tech_availability ta
-      JOIN techs t ON t.id = ta.tech_id
-      WHERE ta.tech_id = ? AND ta.day_of_week = CAST (strftime('%w', ?) AS INTEGER)
-        AND ta.start_minute <= ? AND ta.end_minute >= ?
-      LIMIT 1
-    `).get(tech_id, date_ymd, start_minute, end_minute) as { capacity:number, tech_name?:string } | undefined;
-    if (!avail) return res.status(409).json({ error: "tech not available at that time" });
+    // capacity check
+    const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const capRow = db.prepare(`
+      SELECT COALESCE(SUM(capacity),0) AS cap
+        FROM tech_availability
+       WHERE day_of_week = ?
+         AND start_minute <= ?
+         AND end_minute   >= ?
+    `).get(dow, start_minute, end_minute) as { cap: number };
 
-    const used = db.prepare(`
-      SELECT COUNT(*) AS c FROM appointments
-      WHERE tech_id = ? AND date_ymd = ? AND status IN ('pending','confirmed')
-        AND NOT (end_minute <= ? OR start_minute >= ?)
-    `).get(tech_id, date_ymd, start_minute, end_minute).c as number;
-    if (used >= (avail.capacity ?? 1)) return res.status(409).json({ error: "slot already filled" });
+    const existing = db.prepare(`
+      SELECT COUNT(*) AS n
+        FROM appointments
+       WHERE date = ?
+         AND start_minute = ?
+         AND end_minute   = ?
+    `).get(date, start_minute, end_minute) as { n: number };
 
-    const id = nid();
-    db.prepare(`
-      INSERT INTO appointments (id, owner_email, tech_id, date_ymd, start_minute, end_minute, status, notes)
-      VALUES (?,?,?,?,?,?, 'pending', ?)
-    `).run(id, owner_email, tech_id ?? null, date_ymd, start_minute, end_minute, notes ?? null);
-
-    // event log
-    db.prepare(`INSERT INTO events (id,ts,actor,type,json) VALUES (?,?,?,?,?)`)
-      .run(nid(), Date.now(), `client:${owner_email}`, "appointment.created",
-           JSON.stringify({ id, owner_email, tech_id, date_ymd, start_minute, end_minute }));
-
-    // dual-write best effort
-    let gcalId: string | undefined;
-    const startLocal = localISO(date_ymd, start_minute);
-    const endLocal   = localISO(date_ymd, end_minute);
-
-    try {
-      const ev = await createCalendarEvent({
-        summary: `Service: ${owner_email}${avail?.tech_name ? ` • ${avail.tech_name}` : ""}`,
-        description: notes || undefined,
-        startLocal, endLocal,
-        attendees: [{ email: owner_email }],
-      });
-      gcalId = (ev as any)?.id;
-      if (gcalId) db.prepare(`UPDATE appointments SET gcal_event_id=? WHERE id=?`).run(gcalId, id);
-    } catch (e:any) {
-      console.error("[scheduler] calendar write failed:", e?.message || String(e));
+    if ((existing?.n || 0) >= (capRow?.cap || 0)) {
+      return res.status(409).json({ error: "slot_full" });
     }
 
+    // create
+    const info = db.prepare(`
+      INSERT INTO appointments (date,start_minute,end_minute,owner_email,vehicle_id,status)
+      VALUES (?,?,?,?,?,'scheduled')
+    `).run(date, start_minute, end_minute, owner_email, vehicle_id);
+
+    const id = Number(info.lastInsertRowid);
+
+    // Sheets (best effort)
     try {
       await appendAppointmentRow({
-        id,
-        owner_email,
-        tech_id: tech_id ?? null,
-        tech_name: avail?.tech_name ?? null,
-        date_ymd,
-        start_hhmm: toHHMM(start_minute),
-        end_hhmm: toHHMM(end_minute),
-        status: "pending",
-        created_at_iso: new Date().toISOString(),
-        notes: notes ?? null,
+        id, date, start_minute, end_minute, owner_email, vehicle_id, status: "scheduled",
       });
-    } catch (e:any) {
-      console.error("[scheduler] sheets write failed:", e?.message || String(e));
+    } catch (e: any) {
+      console.error("[sheets] append appointment failed:", e?.message || e);
     }
 
-    res.json({ ok:true, appointment:{ id, owner_email, tech_id, date_ymd, start_minute, end_minute, status:"pending", gcal_event_id:gcalId }});
-  } catch (e:any) {
-    console.error("[scheduler] create failed:", e?.message || String(e));
+    // Calendar (best effort)
+    try {
+      const tz = process.env.SCHED_TZ || "America/New_York";
+      await createEvent({
+        summary: String(b.summary || "Juice Junkiez Service"),
+        description: String(b.description || `Owner: ${owner_email} • Vehicle ${vehicle_id}`),
+        startISO: minutesToISO(date, start_minute, tz),
+        endISO:   minutesToISO(date, end_minute,   tz),
+        attendees: Array.isArray(b.attendees) ? b.attendees : [{ email: owner_email }],
+        timeZone: tz,
+      });
+    } catch (e: any) {
+      console.error("[calendar] createEvent failed:", e?.message || e);
+    }
+
+    res.json({ ok: true, id, date, start_minute, end_minute, owner_email, vehicle_id, status: "scheduled" });
+  } catch (err: any) {
+    console.error("[scheduler] error:", err?.message || err);
     res.status(500).json({ error: "internal_error" });
   }
 });

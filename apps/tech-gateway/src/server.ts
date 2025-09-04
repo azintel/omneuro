@@ -1,17 +1,17 @@
 // apps/tech-gateway/src/server.ts
+
 import techRouter from "./routes/tech.js";
 import garageRouter from "./routes/garage.js";
 import chatRouter from "./routes/chat.js";
-import authRouter, { requireAuth } from "./auth.js";
+import schedulerRouter from "./routes/scheduler.js";
 
 import cors from "cors";
 import express from "express";
-import cookieParser from "cookie-parser";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { appRouter } from "./routes.js";
+import cookieParser from "cookie-parser";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -23,20 +23,16 @@ const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
+// Paths under /api/* that should remain public
 const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
-  "/garage/vehicles", // public for client page
-  "/garage/auth/request",
-  "/garage/auth/verify",
+  "/garage/vehicles",     // allow client page to POST/GET without Basic Auth
+  "/scheduler/slots"      // clients need to see availability
 ]);
 
-function requireBasicAuthForApi(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) {
+function requireBasicAuthForApi(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!authEnabled) return next();
   if (API_PUBLIC_PATHS.has(req.path)) return next();
 
@@ -45,7 +41,8 @@ function requireBasicAuthForApi(
     res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
     return res.status(401).send("Authentication required");
   }
-  const [u, p] = Buffer.from(hdr.slice(6), "base64").toString().split(":", 2);
+  const b64 = hdr.slice("Basic ".length).trim();
+  const [u, p] = Buffer.from(b64, "base64").toString().split(":", 2);
   if (u === BASIC_USER && p === BASIC_PASS) return next();
 
   res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
@@ -53,11 +50,11 @@ function requireBasicAuthForApi(
 }
 
 // -----------------------------
-// Middlewares (order matters)
+// Middlewares (body, cors, req_id, cookies)
 // -----------------------------
 app.use(express.json({ limit: "5mb" }));
-app.use(cookieParser());
 app.use(cors());
+app.use(cookieParser());
 
 app.use((req, res, next) => {
   const hdr = req.headers["x-request-id"];
@@ -99,16 +96,17 @@ app.get("/admin/diag", (req, res) => {
 });
 
 // -----------------------------
-// API routes (auth order matters)
+// Protect /api/* (after public paths are defined)
 // -----------------------------
-app.use("/api", requireBasicAuthForApi);        // basic auth gate (skips public list)
-app.use("/api/garage", authRouter);             // /auth/* endpoints live here too
+app.use("/api", requireBasicAuthForApi);
+
+// Routers
 app.use("/api", chatRouter);
 app.use("/api/tech", techRouter);
-app.use("/api/garage", garageRouter);           // vehicles, etc.
-app.use("/v1", appRouter);
+app.use("/api/garage", garageRouter);
+app.use("/api/scheduler", schedulerRouter);
 
-// static site (homepage + garage UI)
+// static (public homepage + assets)
 app.use("/", express.static(path.join(__dirname, "public")));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 

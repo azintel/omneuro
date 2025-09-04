@@ -3,121 +3,185 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Client Garage | Juice Junkiez</title>
+  <title>Customer Garage | Juice Junkiez</title>
   <link rel="stylesheet" href="./styles.css" />
   <style>
-    :root{
-      --bg:#0a0a0a; --card:#131313; --ink:#f5f5f5; --muted:#b9b9b9; --line:#242424;
-      --accent:#ffd84d; --accent-ink:#1b1b1b; --radius:14px; --pad:16px;
-    }
-    body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif}
-    .wrap{max-width:980px;margin:0 auto;padding:20px}
-    header.wrap{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
-    .nav{display:flex;gap:10px;align-items:center}
-    .btn{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);background:#0f0f0f;color:var(--ink);padding:8px 12px;border-radius:12px;text-decoration:none}
+    /* tiny additions specific to scheduling */
+    .inline{display:flex;gap:8px;flex-wrap:wrap}
+    .slot{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#0f0f0f}
+    .slot b{font-size:14px}
+    .slot small{color:var(--muted)}
+    .slots{display:grid;gap:8px}
+    .muted{color:var(--muted)}
+    .btn{padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:#0f0f0f;color:inherit;cursor:pointer}
     .btn:hover{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,216,77,.15)}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    @media (max-width:800px){ .grid{grid-template-columns:1fr} }
-    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--pad)}
-    label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
-    input,textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0f0f0f;color:var(--ink)}
-    button{margin-top:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:#0f0f0f;color:var(--ink);cursor:pointer}
-    button:hover{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,216,77,.15)}
-    .muted{color:var(--muted);font-size:12px}
-    ul.list{list-style:none;margin:8px 0 0;padding:0}
-    ul.list li{border-bottom:1px solid var(--line);padding:8px 0}
-    footer{border-top:1px solid var(--line);margin-top:20px;padding:16px 0;color:var(--muted);text-align:center}
+    .success{color:#64d98b}
+    .error{color:#ff7a7a}
+    header.wrap .login{margin-left:auto}
   </style>
 </head>
 <body>
   <header class="wrap">
-    <div>
-      <h1 style="margin:0;font-size:18px">Client Garage</h1>
-      <p class="muted" style="margin:6px 0 0">Add your vehicles and view saved rides. Login will enable invoices & scheduling.</p>
-    </div>
-    <nav class="nav">
-      <!-- When auth is fully wired, /login will set the cookie and redirect back -->
-      <a class="btn" href="/login?return=/garage/">Login</a>
-      <!-- Placeholder until account page exists -->
-      <a class="btn" href="/account" aria-disabled="true" onclick="event.preventDefault()">Account (soon)</a>
-      <a class="btn" href="/">Home</a>
-    </nav>
+    <h1>Customer Garage</h1>
+    <p class="muted">Add a vehicle, and book service with our live scheduler.</p>
+    <a href="/garage/login.html" class="login btn">Login</a>
   </header>
 
   <main class="wrap grid">
+    <!-- Add Vehicle -->
     <section class="card">
-      <h2 style="margin-top:0">Add Vehicle</h2>
+      <h2>Add Vehicle</h2>
       <form id="addForm">
         <label>Email <input type="email" name="owner_email" required placeholder="you@example.com" /></label>
-        <label>Make <input type="text" name="make" required placeholder="Begode" /></label>
-        <label>Model <input type="text" name="model" required placeholder="Master" /></label>
+        <div class="inline" style="gap:12px;align-items:center">
+          <label>Make <input type="text" name="make" required placeholder="Begode" /></label>
+          <label>Model <input type="text" name="model" required placeholder="Master" /></label>
+        </div>
         <label>Nickname <input type="text" name="nickname" placeholder="(optional)" /></label>
         <label>Notes <textarea name="notes" rows="3" placeholder="(optional)"></textarea></label>
-        <button type="submit">Save Vehicle</button>
+        <button type="submit" class="btn">Save Vehicle</button>
       </form>
-      <div id="addMsg" class="muted" aria-live="polite"></div>
+      <div id="addMsg" class="msg" aria-live="polite"></div>
     </section>
 
+    <!-- List Vehicles -->
     <section class="card">
-      <h2 style="margin-top:0">My Vehicles</h2>
+      <h2>My Vehicles</h2>
       <form id="listForm" class="inline">
         <input type="email" name="owner_email" required placeholder="you@example.com" />
-        <button type="submit">Load</button>
+        <button type="submit" class="btn">Load</button>
       </form>
-      <div id="listMsg" class="muted" aria-live="polite"></div>
+      <div id="listMsg" class="msg muted" aria-live="polite"></div>
       <ul id="vehicleList" class="list"></ul>
+    </section>
+
+    <!-- Schedule Appointment -->
+    <section class="card" style="grid-column:1/-1">
+      <h2>Schedule Service</h2>
+      <p class="muted">Search free slots and book instantly. We’ll confirm by email/SMS.</p>
+      <form id="slotForm" class="inline">
+        <input type="email" name="owner_email" required placeholder="you@example.com" />
+        <input type="date" name="start" required />
+        <input type="date" name="end" required />
+        <button type="submit" class="btn">Find Slots</button>
+      </form>
+      <div id="slotMsg" class="msg muted" aria-live="polite"></div>
+      <div id="slotList" class="slots"></div>
     </section>
   </main>
 
-  <footer class="wrap">© <span id="y"></span> Juice Junkiez • Powered by Omneuro</footer>
+  <footer class="wrap muted">
+    © <span id="y"></span> Juice Junkiez • Powered by Omneuro
+  </footer>
 
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
-    const API = "https://tech.juicejunkiez.com/api/garage";
+    const API = "/api";
+
+    const $ = (sel, root=document)=>root.querySelector(sel);
+    const el = (tag, attrs={})=>{
+      const n = document.createElement(tag);
+      Object.entries(attrs).forEach(([k,v])=>{
+        if(k==="text") n.textContent=v;
+        else if(k==="html") n.innerHTML=v;
+        else n.setAttribute(k,v);
+      });
+      return n;
+    };
 
     async function postJSON(url, body){
-      const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
-      if (!r.ok) throw new Error(await r.text());
+      const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+      if(!r.ok) throw new Error(await r.text());
       return r.json();
     }
     async function getJSON(url){
       const r = await fetch(url);
-      if (!r.ok) throw new Error(await r.text());
+      if(!r.ok) throw new Error(await r.text());
       return r.json();
     }
 
     // Add vehicle
-    document.getElementById("addForm").addEventListener("submit", async (e)=>{
+    $("#addForm").addEventListener("submit", async (e)=>{
       e.preventDefault();
-      const msg = document.getElementById("addMsg");
-      msg.textContent = "";
-      const form = e.currentTarget;
-      const payload = Object.fromEntries(new FormData(form).entries());
+      $("#addMsg").textContent = "";
+      const fd = new FormData(e.currentTarget);
+      const payload = Object.fromEntries(fd.entries());
       try{
-        const out = await postJSON(API + "/vehicles", payload);
-        msg.textContent = "Added vehicle ID " + out.vehicle.id;
-        form.reset();
-      }catch(err){ msg.textContent = "Error: " + err; }
+        const out = await postJSON(API + "/garage/vehicles", payload);
+        $("#addMsg").textContent = "Added vehicle ID " + out.vehicle.id;
+        $("#addMsg").className = "msg success";
+      }catch(err){
+        $("#addMsg").textContent = "Error: " + err;
+        $("#addMsg").className = "msg error";
+      }
     });
 
     // List vehicles
-    document.getElementById("listForm").addEventListener("submit", async (e)=>{
+    $("#listForm").addEventListener("submit", async (e)=>{
       e.preventDefault();
-      const msg = document.getElementById("listMsg");
-      const ul = document.getElementById("vehicleList");
-      msg.textContent = "Loading…";
-      ul.innerHTML = "";
-      const form = e.currentTarget;
-      const email = new FormData(form).get("owner_email");
+      $("#listMsg").textContent = "";
+      const fd = new FormData(e.currentTarget);
+      const email = fd.get("owner_email");
       try{
-        const out = await getJSON(API + "/vehicles?owner_email=" + encodeURIComponent(String(email)));
-        msg.textContent = out.items.length ? "" : "No vehicles found.";
+        const out = await getJSON(API + "/garage/vehicles?owner_email=" + encodeURIComponent(email));
+        const ul = $("#vehicleList");
+        ul.innerHTML = "";
         out.items.forEach(v=>{
-          const li = document.createElement("li");
-          li.innerHTML = `<strong>${v.make} ${v.model}</strong> ${v.nickname?`— “${v.nickname}”`:``}<br><span class="muted">ID ${v.id}${v.created_at?` • ${v.created_at}`:``}</span>`;
+          const li = el("li"); li.className="list-item";
+          li.innerHTML = `<b>${v.make} ${v.model}</b> <small>#${v.id}</small><br /><span class="muted">${v.nickname||""}</span>`;
           ul.appendChild(li);
         });
-      }catch(err){ msg.textContent = "Error: " + err; }
+        $("#listMsg").textContent = out.items.length ? "" : "No vehicles yet.";
+      }catch(err){
+        $("#listMsg").textContent = "Error: " + err;
+      }
+    });
+
+    // Find slots
+    $("#slotForm").addEventListener("submit", async (e)=>{
+      e.preventDefault();
+      $("#slotMsg").textContent = "";
+      $("#slotList").innerHTML = "";
+      const fd = new FormData(e.currentTarget);
+      const email = fd.get("owner_email");
+      const start = fd.get("start");
+      const end   = fd.get("end");
+      try{
+        const out = await getJSON(API + `/scheduler/slots?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+        if(!out.items.length){
+          $("#slotMsg").textContent = "No free slots in the selected range.";
+          return;
+        }
+        const list = $("#slotList");
+        out.items.slice(0,50).forEach(s=>{
+          const row = el("div"); row.className="slot";
+          row.innerHTML = `<div><b>${s.date_ymd} ${s.start_hhmm}–${s.end_hhmm}</b><br/><small>${s.tech_name||"Any tech"} • ${s.used}/${s.capacity}</small></div>`;
+          const btn = el("button",{class:"btn",text:"Book"});
+          btn.onclick = async ()=>{
+            $("#slotMsg").textContent = "Booking…";
+            try{
+              const pay = {
+                owner_email: email,
+                tech_id: s.tech_id || null,
+                date_ymd: s.date_ymd,
+                start_minute: s.start_minute,
+                end_minute: s.end_minute
+              };
+              const res = await postJSON(API + "/scheduler/appointments", pay);
+              $("#slotMsg").textContent = res.ok ? "Appointment requested! We’ll confirm shortly." : (res.error || "Unknown error");
+              $("#slotMsg").className = res.ok ? "msg success" : "msg error";
+            }catch(err){
+              $("#slotMsg").textContent = "Error: " + err;
+              $("#slotMsg").className = "msg error";
+            }
+          };
+          row.appendChild(btn);
+          list.appendChild(row);
+        });
+      }catch(err){
+        $("#slotMsg").textContent = "Error: " + err;
+        $("#slotMsg").className = "msg error";
+      }
     });
   </script>
 </body>
