@@ -1,24 +1,54 @@
-<!doctype html><meta charset="utf-8">
-<title>Login • Client Garage</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="../garage.css">
-<div class="card" style="max-width:440px;margin:40px auto">
-  <h2>Sign in</h2>
-  <label>Email</label>
-  <input id="email" placeholder="you@example.com">
-  <button id="go">Send Link</button>
-  <p id="msg" class="muted"></p>
-</div>
-<script>
-const API = "/api/garage";
-async function post(u,b){ const r=await fetch(u,{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); if(!r.ok) throw new Error(await r.text()); return r.json();}
-document.getElementById('go').onclick = async ()=>{
-  const email = document.getElementById('email').value.trim();
-  document.getElementById('msg').textContent = "Sending…";
-  try{
-    const out = await post(API + "/auth/request", { email });
-    document.getElementById('msg').textContent = "Check your email for the sign-in link.";
-    if(out.dev_link){ document.getElementById('msg').innerHTML += `<br><a href="${out.dev_link}">Dev sign-in</a>`; }
-  }catch(e){ document.getElementById('msg').textContent = "Error: " + e; }
-};
-</script>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Garage Login | Juice Junkiez</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="wrap">
+    <h1>Garage Login</h1>
+    <p class="muted">Enter your email and we’ll send you a sign-in link.</p>
+    <nav class="inline" style="gap:12px">
+      <a class="badge" href="./">Back to Garage</a>
+      <a class="badge" href="/">Home</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <form id="loginForm">
+        <label>Email <input type="email" name="email" placeholder="you@example.com" required /></label>
+        <button type="submit">Send Sign-in Link</button>
+      </form>
+      <div id="loginMsg" class="msg" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("loginForm");
+    const msg = document.getElementById("loginMsg");
+    const setMsg = (t, ok=true) => { msg.textContent=t; msg.className="msg " + (ok?"ok":"err"); };
+
+    async function api(path, opts={}) {
+      const res = await fetch(path, { headers: { "Content-Type":"application/json" }, ...opts });
+      const data = await res.json().catch(()=> ({}));
+      if (!res.ok) throw new Error(data?.error || "request_failed");
+      return data;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const email = new FormData(form).get("email");
+        await api("/api/garage/auth/request", { method:"POST", body: JSON.stringify({ email }) });
+        setMsg("If that email exists, a sign-in link has been sent.", true);
+        form.reset();
+      } catch (err) {
+        setMsg(err.message || "Failed to send link", false);
+      }
+    });
+  </script>
+</body>
+</html>

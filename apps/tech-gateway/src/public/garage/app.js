@@ -1,95 +1,116 @@
-const API_BASE = "/api/garage";
+// apps/tech-gateway/src/public/garage/app.js
 
-const addForm = document.getElementById("addForm");
-const listForm = document.getElementById("listForm");
-const addMsg  = document.getElementById("addMsg");
-const listMsg = document.getElementById("listMsg");
-const listUl  = document.getElementById("vehicleList");
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-function toast(el, text, kind = "info") {
-  el.textContent = text;
-  el.className = `msg ${kind}`;
-  if (text) setTimeout(() => { el.textContent = ""; el.className = "msg"; }, 4000);
-}
-
-async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    method: "GET",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    credentials: "same-origin",
+    ...opts,
   });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
+  const ct = res.headers.get("content-type") || "";
+  const data = ct.includes("application/json") ? await res.json() : await res.text();
+  if (!res.ok) throw new Error(typeof data === "string" ? data : data?.error || "request_failed");
   return data;
 }
 
-async function getJSON(url) {
-  const r = await fetch(url, { credentials: "same-origin" });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
-  return data;
+function hhmmToMinutes(hhmm) {
+  const [h, m] = String(hhmm || "").split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) throw new Error("invalid time");
+  return h * 60 + m;
 }
 
-// Add vehicle
-addForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = new FormData(addForm);
-  const payload = Object.fromEntries(form.entries());
-  try {
-    toast(addMsg, "Saving…");
-    const res = await postJSON(`${API_BASE}/vehicles`, payload);
-    toast(addMsg, "Saved!", "ok");
-    // Prepend to list if owner's email matches current list filter
-    const listOwner = new FormData(listForm).get("owner_email");
-    if (listOwner && listOwner === payload.owner_email) {
-      renderList([res.vehicle, ...currentItems]);
+function setMsg(el, text, ok = true) {
+  el.textContent = text;
+  el.className = "msg " + (ok ? "ok" : "err");
+}
+
+// ----- Add Vehicle -----
+const addForm = $("#addForm");
+if (addForm) {
+  addForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("#addMsg");
+    try {
+      const form = new FormData(addForm);
+      const payload = Object.fromEntries(form.entries());
+      const data = await api("/api/garage/vehicles", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setMsg(msg, `Saved vehicle #${data?.vehicle?.id || "?"}`, true);
+      addForm.reset();
+    } catch (err) {
+      setMsg(msg, err.message || "Failed to save", false);
     }
-    addForm.reset();
-  } catch (err) {
-    toast(addMsg, err.message || "Failed to save", "err");
-  }
-});
-
-let currentItems = [];
-
-// Load vehicles for owner
-listForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const owner_email = new FormData(listForm).get("owner_email");
-  if (!owner_email) return toast(listMsg, "Enter your email", "err");
-  try {
-    toast(listMsg, "Loading…");
-    const res = await getJSON(`${API_BASE}/vehicles?owner_email=${encodeURIComponent(owner_email)}`);
-    currentItems = res.items || [];
-    renderList(currentItems);
-    toast(listMsg, `Loaded ${currentItems.length} vehicle(s)`, "ok");
-  } catch (err) {
-    toast(listMsg, err.message || "Failed to load", "err");
-  }
-});
-
-function renderList(items) {
-  listUl.innerHTML = "";
-  if (!items.length) {
-    listUl.innerHTML = `<li class="muted">No vehicles yet.</li>`;
-    return;
-  }
-  for (const v of items) {
-    const li = document.createElement("li");
-    li.className = "row";
-    li.innerHTML = `
-      <div>
-        <strong>${escapeHTML(v.make)} ${escapeHTML(v.model)}</strong>
-        ${v.nickname ? `<span class="tag">${escapeHTML(v.nickname)}</span>` : ""}
-        <div class="sub">${escapeHTML(v.owner_email)} • ${escapeHTML(v.created_at)}</div>
-        ${v.notes ? `<div class="notes">${escapeHTML(v.notes)}</div>` : ""}
-      </div>
-    `;
-    listUl.appendChild(li);
-  }
+  });
 }
 
-function escapeHTML(s) {
-  return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+// ----- List Vehicles -----
+const listForm = $("#listForm");
+if (listForm) {
+  listForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("#listMsg");
+    const ul = $("#vehicleList");
+    ul.innerHTML = "";
+    try {
+      const email = new FormData(listForm).get("owner_email");
+      const data = await api(`/api/garage/vehicles?owner_email=${encodeURIComponent(email)}`);
+      const items = data?.items || [];
+      if (!items.length) {
+        ul.innerHTML = `<li class="muted">No vehicles yet.</li>`;
+      } else {
+        ul.innerHTML = items
+          .map(
+            (v) =>
+              `<li>
+                <b>#${v.id}</b> — ${v.make} ${v.model}
+                ${v.nickname ? `(<i>${v.nickname}</i>)` : ""}
+                <div class="muted">${v.created_at}</div>
+              </li>`
+          )
+          .join("");
+      }
+      setMsg(msg, `Loaded ${items.length} vehicle(s)`, true);
+    } catch (err) {
+      setMsg(msg, err.message || "Failed to load vehicles", false);
+    }
+  });
+}
+
+// ----- Schedule Appointment -----
+const schedForm = $("#schedForm");
+if (schedForm) {
+  schedForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("#schedMsg");
+    try {
+      const form = new FormData(schedForm);
+      const payload = {
+        owner_email: String(form.get("owner_email") || "").trim().toLowerCase(),
+        vehicle_id: Number(form.get("vehicle_id")),
+        date: String(form.get("date")),
+        start_minute: hhmmToMinutes(form.get("start_time")),
+        end_minute: hhmmToMinutes(form.get("end_time")),
+      };
+      if (payload.end_minute <= payload.start_minute) throw new Error("End must be after start");
+
+      const data = await api("/api/scheduler/appointments", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setMsg(
+        msg,
+        `Booked appt #${data.id} on ${data.date} from ${form.get("start_time")} to ${form.get(
+          "end_time"
+        )} for ${payload.owner_email}`,
+        true
+      );
+      schedForm.reset();
+    } catch (err) {
+      setMsg(msg, err.message || "Failed to schedule", false);
+    }
+  });
 }
