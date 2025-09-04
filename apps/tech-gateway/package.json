@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-ssm": "^3.879.0",
+    "@googleapis/calendar": "^11.0.1",
     "@googleapis/sheets": "^6.1.0",
     "better-sqlite3": "^12.2.0",
     "cookie-parser": "^1.4.7",

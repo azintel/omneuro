@@ -25,6 +25,10 @@ export GOOGLE_API_KEY="$(getp "/omneuro/google/api_key" || true)"
 export GOOGLE_CLIENT_ID="$(getp "/omneuro/google/client_id" || true)"
 export GOOGLE_CLIENT_SECRET="$(getp "/omneuro/google/client_secret" || true)"
 export OPENAI_API_KEY="$(getp "/omneuro/openai/api_key" || true)"
+export SCHED_SPREADSHEET_ID="$(aws ssm get-parameter --region us-east-2 --name /omneuro/google/scheduler_spreadsheet_id --query Parameter.Value --output text 2>/dev/null || true)"
+export GOOGLE_CALENDAR_ID="$(aws ssm get-parameter --region us-east-2 --name /omneuro/google/calendar_id --query Parameter.Value --output text 2>/dev/null || true)"
+echo "[SSM] SCHED_SPREADSHEET_ID=${SCHED_SPREADSHEET_ID:0:6}…"
+echo "[SSM] GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID:0:6}…"
 export SHEETS_SPREADSHEET_ID="$(getp "/omneuro/google/sheets_spreadsheet_id" || true)"
 
 if [ -z "${SHEETS_SPREADSHEET_ID:-}" ] || [ "${SHEETS_SPREADSHEET_ID}" = "None" ]; then
