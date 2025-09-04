@@ -119,6 +119,16 @@ wait200 "https://juicejunkiez.com/"
 wait200 "https://tech.juicejunkiez.com/healthz"
 wait200 "https://tech.juicejunkiez.com/api/health"
 
+echo "=== [REDEPLOY] Extended health checks ==="
+
+# Garage pages
+curl -fsS https://tech.juicejunkiez.com/garage/index.html >/dev/null && echo "[OK] garage index"
+curl -fsS https://tech.juicejunkiez.com/garage/login.html >/dev/null && echo "[OK] garage login"
+
+# API endpoints
+curl -fsS https://tech.juicejunkiez.com/api/scheduler/health | jq .
+curl -fsS https://tech.juicejunkiez.com/api/tech/health | jq .
+
 # --- Tail last logs once (no hang) ---
 echo "=== [REDEPLOY] Tail last 80 lines of PM2 logs (tech-gateway) ==="
 pm2 logs tech-gateway --lines 80 --nostream || true
