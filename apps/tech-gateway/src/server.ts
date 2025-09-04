@@ -7,11 +7,12 @@ import schedulerRouter from "./routes/scheduler.js";
 
 import cors from "cors";
 import express from "express";
+import cookieParser from "cookie-parser";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import cookieParser from "cookie-parser";
+import { appRouter } from "./routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -28,8 +29,8 @@ const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
-  "/garage/vehicles",     // allow client page to POST/GET without Basic Auth
-  "/scheduler/slots"      // clients need to see availability
+  "/garage/vehicles",      // public client endpoints
+  "/scheduler/health"      // <— add scheduler health
 ]);
 
 function requireBasicAuthForApi(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -50,11 +51,11 @@ function requireBasicAuthForApi(req: express.Request, res: express.Response, nex
 }
 
 // -----------------------------
-// Middlewares (body, cors, req_id, cookies)
+// Middlewares
 // -----------------------------
 app.use(express.json({ limit: "5mb" }));
-app.use(cors());
 app.use(cookieParser());
+app.use(cors());
 
 app.use((req, res, next) => {
   const hdr = req.headers["x-request-id"];
@@ -96,7 +97,7 @@ app.get("/admin/diag", (req, res) => {
 });
 
 // -----------------------------
-// Protect /api/* (after public paths are defined)
+// Protect /api/* (after declaring public paths)
 // -----------------------------
 app.use("/api", requireBasicAuthForApi);
 
@@ -104,7 +105,8 @@ app.use("/api", requireBasicAuthForApi);
 app.use("/api", chatRouter);
 app.use("/api/tech", techRouter);
 app.use("/api/garage", garageRouter);
-app.use("/api/scheduler", schedulerRouter);
+app.use("/api/scheduler", schedulerRouter); // <— mount scheduler
+app.use("/v1", appRouter);
 
 // static (public homepage + assets)
 app.use("/", express.static(path.join(__dirname, "public")));
