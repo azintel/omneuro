@@ -1,61 +1,83 @@
 // apps/tech-gateway/src/lib/calendar.ts
-// Google Calendar helper using the SCOPED package @googleapis/calendar.
+import { calendar_v3 } from "@googleapis/calendar";
+import { GoogleAuth } from "google-auth-library";
+import { getParam } from "./ssm.js";
 
-import { calendar, calendar_v3 } from "@googleapis/calendar";
-import { GoogleAuth, OAuth2Client } from "google-auth-library";
-import { getParam } from "../lib/ssm.js";
-
-const SA_PARAM   = process.env.OMNEURO_GOOGLE_SA_PARAM || "/omneuro/google/sa_json";
+const SA_PARAM = process.env.OMNEURO_GOOGLE_SA_PARAM || "/omneuro/google/sa_json";
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || "";
-const SCHED_TZ    = process.env.SCHED_TZ || "America/New_York";
+const SCHED_TZ = process.env.SCHED_TZ || "America/New_York";
 
-async function getCalendar(): Promise<calendar_v3.Calendar> {
-  const saJson = await getParam(SA_PARAM, true);
-  if (!saJson) throw new Error("[calendar] empty SA JSON from SSM");
-  const creds = JSON.parse(saJson);
+async function getCalendarClient(): Promise<calendar_v3.Calendar | null> {
+  if (!CALENDAR_ID) {
+    console.warn("[calendar] GOOGLE_CALENDAR_ID not set; skipping");
+    return null;
+  }
 
-  // Get a concrete client; then pass that client (not the GoogleAuth wrapper).
+  let creds: any;
+  try {
+    const raw = await getParam(SA_PARAM, true);
+    creds = JSON.parse(raw);
+  } catch (e: any) {
+    console.error("[calendar] failed to read SA JSON from SSM:", e?.message || String(e));
+    return null;
+  }
+
   const auth = new GoogleAuth({
     credentials: creds,
-    scopes: ["https://www.googleapis.com/auth/calendar"],
+    scopes: ["https://www.googleapis.com/auth/calendar.events"],
   });
-  const client = (await auth.getClient()) as OAuth2Client | any;
 
-  // Some type versions are picky; cast to any to satisfy the overload.
-  return calendar({ version: "v3", auth: client as any });
+  const client = await auth.getClient();
+  return new calendar_v3.Calendar({ auth: client as any });
 }
 
-export async function createEvent(opts: {
+export type CalendarEventInput = {
   summary: string;
   description?: string;
   startISO: string;
   endISO: string;
-  attendees?: { email: string; displayName?: string }[];
-  timeZone?: string;
-}) {
-  if (!CALENDAR_ID) {
-    console.warn("[calendar] GOOGLE_CALENDAR_ID not set; skipping calendar write");
-    return null;
-  }
+  attendees?: Array<{ email: string; displayName?: string }>;
+};
 
-  const cal = await getCalendar();
-  const tz = opts.timeZone || SCHED_TZ;
+export async function createCalendarEvent(input: CalendarEventInput): Promise<{
+  ok: boolean;
+  id?: string;
+  htmlLink?: string;
+  error?: string;
+}> {
+  const cal = await getCalendarClient();
+  if (!cal || !CALENDAR_ID) return { ok: true };
 
-  const attendees: calendar_v3.Schema$EventAttendee[] = (opts.attendees || []).map(a => ({
+  const attendees = (input.attendees || []).map(a => ({
     email: a.email,
-    displayName: a.displayName ?? null, // some d.ts expect string | null
-  }));
+    displayName: a.displayName,
+  })) as calendar_v3.Schema$EventAttendee[];
 
-  const resp = await cal.events.insert({
-    calendarId: CALENDAR_ID,
-    requestBody: {
-      summary: opts.summary,
-      description: opts.description || "",
-      start: { dateTime: opts.startISO, timeZone: tz },
-      end:   { dateTime: opts.endISO,   timeZone: tz },
-      attendees,
-    },
-  });
+  try {
+    // normalize description to null (many schemas prefer null over undefined)
+    const request = cal.events.insert({
+      calendarId: CALENDAR_ID,
+      requestBody: {
+        summary: input.summary,
+        description: input.description ?? null,
+        start: { dateTime: input.startISO, timeZone: SCHED_TZ },
+        end: { dateTime: input.endISO, timeZone: SCHED_TZ },
+        attendees,
+      },
+    }) as unknown as Promise<{ data: calendar_v3.Schema$Event }>;
 
-  return resp.data;
+    const resp = await request;
+    const ev = resp.data;
+
+    // Build a result without undefined keys (exactOptionalPropertyTypes safe)
+    const out: { ok: boolean; id?: string; htmlLink?: string } = { ok: true };
+    if (ev.id) out.id = ev.id;
+    if (ev.htmlLink) out.htmlLink = ev.htmlLink;
+
+    console.log("[calendar] created", out);
+    return out;
+  } catch (e: any) {
+    console.error("[calendar] create event error:", e?.message || String(e));
+    return { ok: false, error: e?.message || String(e) };
+  }
 }

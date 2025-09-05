@@ -1,57 +1,38 @@
 // apps/tech-gateway/src/routes/garage.ts
-
-import { Router } from "express";
-import type { Request, Response } from "express";
-import db, { addVehicle, upsertOwner, listVehiclesByOwner } from "../lib/db.js";
-import { appendVehicleRow } from "../lib/sheets.js";
+import { Router, type Request, type Response } from "express";
+import { upsertOwner, addVehicle, listVehiclesByOwner } from "../lib/db.js";
 
 const router = Router();
 
-router.get("/health", (_req: Request, res: Response) => res.json({ ok: true, service: "garage" }));
-
-// Add a vehicle (public)
-router.post("/vehicles", async (req: Request, res: Response) => {
+router.post("/vehicles", (req: Request, res: Response) => {
   try {
-    const owner_email = String(req.body?.owner_email || "").trim().toLowerCase();
-    const make = String(req.body?.make || "").trim();
-    const model = String(req.body?.model || "").trim();
-    const nickname = (req.body?.nickname ?? "").toString().trim() || undefined;
-    const notes = (req.body?.notes ?? "").toString().trim() || undefined;
+    const body = req.body as {
+      owner_email: string; make: string; model: string;
+      nickname?: string; notes?: string;
+      owner_name?: string; owner_phone?: string;
+    };
 
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner_email)) {
-      return res.status(400).json({ error: "owner_email invalid" });
-    }
-    if (!make || !model) return res.status(400).json({ error: "make/model required" });
+    // keep owners table fresh
+    upsertOwner({ email: body.owner_email, name: body.owner_name ?? null, phone: body.owner_phone ?? null });
 
-    // owner upsert (optional name/phone)
-    const name = (req.body?.name ?? "").toString().trim() || undefined;
-    const phone = (req.body?.phone ?? "").toString().trim() || undefined;
-    upsertOwner({ email: owner_email, name, phone });
+    const v = addVehicle({
+      owner_email: body.owner_email,
+      make: body.make,
+      model: body.model,
+      nickname: body.nickname ?? null,
+      notes: body.notes ?? null,
+    });
 
-    const vehicle = addVehicle({ owner_email, make, model, nickname, notes });
-
-    // Dual-write to Sheets (best effort)
-    try {
-      await appendVehicleRow(vehicle);
-    } catch (e: any) {
-      console.error("[sheets] vehicle append failed:", e?.message || e);
-    }
-
-    res.json({ ok: true, vehicle });
-  } catch (err: any) {
-    console.error("[garage] error:", err?.message || err);
-    res.status(500).json({ error: "internal_error" });
+    res.json({ ok: true, vehicle: v });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || String(e) });
   }
 });
 
-// List vehicles for a specific owner (public)
 router.get("/vehicles", (req: Request, res: Response) => {
-  const email = String(req.query?.owner_email || "").trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return res.status(400).json({ error: "owner_email invalid" });
-  }
-  const items = listVehiclesByOwner(email);
-  res.json({ ok: true, items });
+  const email = String(req.query.owner_email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: "owner_email required" });
+  res.json({ ok: true, items: listVehiclesByOwner(email) });
 });
 
 export default router;

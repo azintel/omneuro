@@ -1,18 +1,19 @@
 // apps/tech-gateway/src/server.ts
 
-import techRouter from "./routes/tech.js";
-import garageRouter from "./routes/garage.js";
-import chatRouter from "./routes/chat.js";
-import schedulerRouter from "./routes/scheduler.js";
-
 import cors from "cors";
 import express from "express";
-import cookieParser from "cookie-parser";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { appRouter } from "./routes.js";
+
+// Routers (ESM/NodeNext: use .js in source imports so dist keeps working)
+import techRouter from "./routes/tech.js";
+import garageRouter from "./routes/garage.js";
+import chatRouter from "./routes/chat.js";
+import catalogRouter from "./routes/catalog.js";
+import quotesRouter from "./routes/quotes.js";
+import schedulerRouter from "./routes/scheduler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -24,16 +25,26 @@ const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Paths under /api/* that should remain public
+// Paths under /api/* that remain public (exact matches)
 const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
-  "/garage/vehicles",      // public client endpoints
-  "/scheduler/health"      // <— add scheduler health
+  // garage – allow public add/list vehicles + quote actions shown in UI
+  "/garage/vehicles",
+  "/garage/quotes",
+  "/garage/quotes/preview",
+  "/garage/quotes/accept",
+  // scheduler – allow public booking + health
+  "/scheduler/health",
+  "/scheduler/appointments",
 ]);
 
-function requireBasicAuthForApi(req: express.Request, res: express.Response, next: express.NextFunction) {
+function requireBasicAuthForApi(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
   if (!authEnabled) return next();
   if (API_PUBLIC_PATHS.has(req.path)) return next();
 
@@ -54,7 +65,6 @@ function requireBasicAuthForApi(req: express.Request, res: express.Response, nex
 // Middlewares
 // -----------------------------
 app.use(express.json({ limit: "5mb" }));
-app.use(cookieParser());
 app.use(cors());
 
 app.use((req, res, next) => {
@@ -66,7 +76,7 @@ app.use((req, res, next) => {
 });
 
 // -----------------------------
-// Health + admin diag
+// Health + diag
 // -----------------------------
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -97,18 +107,23 @@ app.get("/admin/diag", (req, res) => {
 });
 
 // -----------------------------
-// Protect /api/* (after declaring public paths)
+// Protect /api/* after declaring public paths
 // -----------------------------
 app.use("/api", requireBasicAuthForApi);
 
+// -----------------------------
 // Routers
+// -----------------------------
 app.use("/api", chatRouter);
 app.use("/api/tech", techRouter);
 app.use("/api/garage", garageRouter);
-app.use("/api/scheduler", schedulerRouter); // <— mount scheduler
-app.use("/v1", appRouter);
+app.use("/api/catalog", catalogRouter);        // admin CRUD for services/fees
+app.use("/api/garage/quotes", quotesRouter);   // client-facing quote endpoints
+app.use("/api/scheduler", schedulerRouter);    // health + create appointments
 
-// static (public homepage + assets)
+// -----------------------------
+// Static (public) homepage + assets
+// -----------------------------
 app.use("/", express.static(path.join(__dirname, "public")));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
