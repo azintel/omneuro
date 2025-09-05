@@ -94,7 +94,7 @@ else
   echo "[ERR] tech-gateway /api/health (local)"
 fi
 
-echo "[garage] $(curl -i -s http://127.0.0.1:8092/api/garage/health | head -n 1 || true)"
+curl -fsSL http://127.0.0.1:8092/garage/ >/dev/null && echo "[OK] garage index (local)"
 
 # --- Public health checks (best-effort) ---
 echo "=== [REDEPLOY] Public health (best-effort) ==="
