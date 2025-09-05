@@ -1,19 +1,18 @@
 // apps/tech-gateway/src/server.ts
 
-import cors from "cors";
-import express from "express";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import fs from "node:fs";
-import { randomUUID } from "node:crypto";
-
-// Routers (ESM/NodeNext: use .js in source imports so dist keeps working)
 import techRouter from "./routes/tech.js";
 import garageRouter from "./routes/garage.js";
 import chatRouter from "./routes/chat.js";
 import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
+
+import cors from "cors";
+import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,14 +29,11 @@ const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
-  // garage – allow public add/list vehicles + quote actions shown in UI
   "/garage/vehicles",
   "/garage/quotes",
   "/garage/quotes/preview",
   "/garage/quotes/accept",
-  // scheduler – allow public booking + health
   "/scheduler/health",
-  "/scheduler/appointments",
 ]);
 
 function requireBasicAuthForApi(
@@ -67,6 +63,7 @@ function requireBasicAuthForApi(
 app.use(express.json({ limit: "5mb" }));
 app.use(cors());
 
+// simple request id
 app.use((req, res, next) => {
   const hdr = req.headers["x-request-id"];
   const rid = (Array.isArray(hdr) ? hdr[0] : hdr) || randomUUID();
@@ -117,13 +114,22 @@ app.use("/api", requireBasicAuthForApi);
 app.use("/api", chatRouter);
 app.use("/api/tech", techRouter);
 app.use("/api/garage", garageRouter);
-app.use("/api/catalog", catalogRouter);        // admin CRUD for services/fees
-app.use("/api/garage/quotes", quotesRouter);   // client-facing quote endpoints
-app.use("/api/scheduler", schedulerRouter);    // health + create appointments
+app.use("/api/catalog", catalogRouter);      // admin CRUD for services/fees
+app.use("/api/garage/quotes", quotesRouter); // client-facing quote endpoints
+app.use("/api/scheduler", schedulerRouter);  // health + create appointments
 
 // -----------------------------
-// Static (public) homepage + assets
+// Static (public) assets
 // -----------------------------
+// Make /garage WITHOUT slash work (our redeploy script probes that)
+app.get("/garage", (_req, res) => res.redirect(301, "/garage/"));
+// Serve the garage bundle explicitly (so /garage/ always resolves index.html)
+app.use("/garage", express.static(path.join(__dirname, "public", "garage")));
+app.get("/garage/", (_req, res) =>
+  res.sendFile(path.join(__dirname, "public", "garage", "index.html"))
+);
+
+// Root site (homepage + shared assets)
 app.use("/", express.static(path.join(__dirname, "public")));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
