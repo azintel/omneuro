@@ -18,3 +18,7 @@ apps/**/.DS_Store
 
 # NPM artifacts
 package-lock.json
+
+# snapshots
+code-snapshot-*.txt
+_snapshot/
