@@ -1,83 +1,104 @@
 // apps/tech-gateway/src/lib/calendar.ts
-import { calendar_v3 } from "@googleapis/calendar";
-import { GoogleAuth } from "google-auth-library";
+//
+// Google Calendar helper (JWT / service account) — no Schema$* refs
+// Optional fields are only included when defined (to satisfy exactOptionalPropertyTypes)
+
+import { google } from "googleapis";
+import { JWT } from "google-auth-library";
+import type { JWTOptions } from "google-auth-library";
 import { getParam } from "./ssm.js";
 
-const SA_PARAM = process.env.OMNEURO_GOOGLE_SA_PARAM || "/omneuro/google/sa_json";
-const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || "";
-const SCHED_TZ = process.env.SCHED_TZ || "America/New_York";
-
-async function getCalendarClient(): Promise<calendar_v3.Calendar | null> {
-  if (!CALENDAR_ID) {
-    console.warn("[calendar] GOOGLE_CALENDAR_ID not set; skipping");
-    return null;
-  }
-
-  let creds: any;
-  try {
-    const raw = await getParam(SA_PARAM, true);
-    creds = JSON.parse(raw);
-  } catch (e: any) {
-    console.error("[calendar] failed to read SA JSON from SSM:", e?.message || String(e));
-    return null;
-  }
-
-  const auth = new GoogleAuth({
-    credentials: creds,
-    scopes: ["https://www.googleapis.com/auth/calendar.events"],
-  });
-
-  const client = await auth.getClient();
-  return new calendar_v3.Calendar({ auth: client as any });
-}
-
+// ---------- minimal shapes we control ----------
+export type GEventAttendee = { email: string; displayName?: string };
 export type CalendarEventInput = {
   summary: string;
   description?: string;
-  startISO: string;
-  endISO: string;
-  attendees?: Array<{ email: string; displayName?: string }>;
+  startISO: string; // e.g. 2025-09-06T16:00:00-04:00
+  endISO: string;   // e.g. 2025-09-06T16:30:00-04:00
+  attendees?: GEventAttendee[];
+  location?: string;
+  sendUpdates?: "all" | "externalOnly" | "none";
 };
 
-export async function createCalendarEvent(input: CalendarEventInput): Promise<{
-  ok: boolean;
-  id?: string;
-  htmlLink?: string;
-  error?: string;
-}> {
-  const cal = await getCalendarClient();
-  if (!cal || !CALENDAR_ID) return { ok: true };
+// ---------- internal helpers ----------
+const SCOPES = ["https://www.googleapis.com/auth/calendar"];
+const DEFAULT_TZ = process.env.SCHED_TZ || "America/New_York";
+const SA_PARAM = process.env.OMNEURO_GOOGLE_SA_PARAM || "/omneuro/google/sa_json";
 
-  const attendees = (input.attendees || []).map(a => ({
-    email: a.email,
-    displayName: a.displayName,
-  })) as calendar_v3.Schema$EventAttendee[];
+async function getSaJson(): Promise<JWTOptions> {
+  const raw = await getParam(SA_PARAM, true);
+  const sa = JSON.parse(raw);
+  // IMPORTANT: don't include `subject` unless you actually have one.
+  const opts: JWTOptions = {
+    email: sa.client_email,
+    key: sa.private_key,
+    scopes: SCOPES,
+  };
+  return opts;
+}
 
+export async function getJwtAuth(): Promise<JWT> {
+  return new JWT(await getSaJson());
+}
+
+export function getCalendarId(): string {
+  const id = process.env.GOOGLE_CALENDAR_ID || "";
+  if (!id) throw new Error("GOOGLE_CALENDAR_ID not set");
+  return id;
+}
+
+// ---------- main API ----------
+export async function createEvent(
+  input: CalendarEventInput
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   try {
-    // normalize description to null (many schemas prefer null over undefined)
-    const request = cal.events.insert({
-      calendarId: CALENDAR_ID,
-      requestBody: {
-        summary: input.summary,
-        description: input.description ?? null,
-        start: { dateTime: input.startISO, timeZone: SCHED_TZ },
-        end: { dateTime: input.endISO, timeZone: SCHED_TZ },
-        attendees,
-      },
-    }) as unknown as Promise<{ data: calendar_v3.Schema$Event }>;
+    const auth = await getJwtAuth();
+    const calendar = google.calendar({ version: "v3", auth });
+    const calendarId = getCalendarId();
 
-    const resp = await request;
-    const ev = resp.data;
+    // Build request body with conditional spreads so optional props
+    // are present only when defined (avoids string|undefined issues).
+    const body = {
+      summary: input.summary,
+      start: { dateTime: input.startISO, timeZone: DEFAULT_TZ },
+      end: { dateTime: input.endISO, timeZone: DEFAULT_TZ },
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.attendees && input.attendees.length
+        ? { attendees: input.attendees }
+        : {}),
+      ...(input.location ? { location: input.location } : {}),
+    };
 
-    // Build a result without undefined keys (exactOptionalPropertyTypes safe)
-    const out: { ok: boolean; id?: string; htmlLink?: string } = { ok: true };
-    if (ev.id) out.id = ev.id;
-    if (ev.htmlLink) out.htmlLink = ev.htmlLink;
+    const sendUpdates = input.sendUpdates ?? "none";
 
-    console.log("[calendar] created", out);
-    return out;
+    const res = await calendar.events.insert({
+      calendarId,
+      requestBody: body,
+      sendUpdates,
+    });
+
+    const id = res.data.id;
+    if (!id) throw new Error("insert returned no event id");
+    return { ok: true, id };
   } catch (e: any) {
-    console.error("[calendar] create event error:", e?.message || String(e));
-    return { ok: false, error: e?.message || String(e) };
+    const msg = e?.message || String(e);
+    console.warn("[calendar] create event warning:", msg);
+    return { ok: false, error: msg };
   }
 }
+
+// Health probe (auth + calendar existence)
+export async function health(): Promise<boolean> {
+  try {
+    const auth = await getJwtAuth();
+    const calendar = google.calendar({ version: "v3", auth });
+    const calendarId = getCalendarId();
+    await calendar.calendars.get({ calendarId });
+    return true;
+  } catch (e) {
+    console.warn("[calendar] health check failed:", e);
+    return false;
+  }
+}
+
+export default { createEvent, health, getJwtAuth };
