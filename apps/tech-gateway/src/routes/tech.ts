@@ -4,6 +4,10 @@ import db from "../lib/db.js";
 
 const router = Router();
 
+router.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "tech" });
+});
+
 type TimeRange = { start: number; end: number }; // minutes from midnight inclusive / exclusive
 
 function parseRangeToMinutes(s: string): TimeRange | null {

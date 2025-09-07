@@ -4,6 +4,10 @@ import { upsertOwner, addVehicle, listVehiclesByOwner } from "../lib/db.js";
 
 const router = Router();
 
+router.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "garage" });
+});
+
 router.post("/vehicles", (req: Request, res: Response) => {
   try {
     const body = req.body as {
