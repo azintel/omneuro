@@ -14,9 +14,14 @@ import chatRouter from "./routes/chat.js";
 import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
+import blogRouter from "./routes/blog.js"; // ⬅ NEW
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// Core middleware
+app.use(cors());
+app.use(express.json({ limit: "2mb" }));
 
 // -----------------------------
 // Auth config (scoped to /api/*)
@@ -38,6 +43,8 @@ const API_PUBLIC_PATHS = new Set<string>([
   // scheduler – allow public booking + health
   "/scheduler/health",
   "/scheduler/appointments",
+  // blog health (metadata endpoints are session-protected)
+  "/garage/blog/health",
 ]);
 
 function requireBasicAuthForApi(
@@ -48,84 +55,60 @@ function requireBasicAuthForApi(
   if (!authEnabled) return next();
   if (API_PUBLIC_PATHS.has(req.path)) return next();
 
-  const hdr = req.headers.authorization || "";
-  if (!hdr.startsWith("Basic ")) {
-    res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
-    return res.status(401).send("Authentication required");
+  // Basic auth check
+  const header = req.headers["authorization"] || "";
+  if (!header.startsWith("Basic ")) {
+    res.setHeader("WWW-Authenticate", "Basic realm=\"tech-gateway\"");
+    return res.status(401).end("Unauthorized");
   }
-  const b64 = hdr.slice("Basic ".length).trim();
-  const [u, p] = Buffer.from(b64, "base64").toString().split(":", 2);
+  const creds = Buffer.from(header.slice(6), "base64").toString("utf8");
+  const [u, p] = creds.split(":", 2);
   if (u === BASIC_USER && p === BASIC_PASS) return next();
 
-  res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
-  return res.status(401).send("Invalid credentials");
+  res.setHeader("WWW-Authenticate", "Basic realm=\"tech-gateway\"");
+  return res.status(401).end("Unauthorized");
 }
 
 // -----------------------------
-// Middlewares
+// Canonical health
 // -----------------------------
-app.use(express.json({ limit: "5mb" }));
-app.use(cors());
-
-app.use((req, res, next) => {
-  const hdr = req.headers["x-request-id"];
-  const rid = (Array.isArray(hdr) ? hdr[0] : hdr) || randomUUID();
-  (req as any).req_id = rid;
-  res.setHeader("x-request-id", rid);
-  next();
-});
-
-// -----------------------------
-// Health + diag
-// -----------------------------
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
 
-app.get("/admin/diag", (req, res) => {
-  const key = process.env.DIAG_KEY || "";
-  if (key && req.query.key !== key) return res.status(403).json({ error: "forbidden" });
-  const tryRead = (p: string, n = 200) => {
-    try {
-      const s = fs.readFileSync(p, "utf8");
-      const lines = s.trim().split("\n");
-      return lines.slice(-n);
-    } catch {
-      return null;
-    }
-  };
-  res.json({
-    ok: true,
-    pid: process.pid,
-    cwd: process.cwd(),
-    publicIndexExists: fs.existsSync(path.join(__dirname, "public", "index.html")),
-    pm2: {
-      outTail: tryRead("/home/ubuntu/.pm2/logs/tech-gateway-out.log"),
-      errTail: tryRead("/home/ubuntu/.pm2/logs/tech-gateway-error.log"),
-    },
-  });
+// -----------------------------
+// API Routes (order matters)
+// -----------------------------
+
+// First gate: apply Basic auth to /api/* except public paths above
+app.use("/api", (req, res, next) => {
+  if (API_PUBLIC_PATHS.has(req.path)) return next();
+  return requireBasicAuthForApi(req, res, next);
 });
 
-// -----------------------------
-// Protect /api/* after declaring public paths
-// -----------------------------
-app.use("/api", requireBasicAuthForApi);
+// PUBLIC (no Basic) endpoints declared above must be mounted under the exact paths:
+app.use("/api/garage", garageRouter);          // vehicles, etc.
+app.use("/api/garage/quotes", quotesRouter);   // quote preview/accept
+app.use("/api/scheduler", schedulerRouter);    // public appointment booking + health
 
-// -----------------------------
-// Routers
-// -----------------------------
-app.use("/api", chatRouter);
+// Chat + Tech + Catalog (Basic)
+app.use("/api/chat", chatRouter);
 app.use("/api/tech", techRouter);
-app.use("/api/garage", garageRouter);
-app.use("/api/catalog", catalogRouter);        // admin CRUD for services/fees
-app.use("/api/garage/quotes", quotesRouter);   // client-facing quote endpoints
-app.use("/api/scheduler", schedulerRouter);    // health + create appointments
+app.use("/api/catalog", catalogRouter);
+
+// Blog (mounted under /api/garage to use session cookie auth inside the subrouter)
+app.use("/api/garage/blog", blogRouter);
 
 // -----------------------------
-// Static (public) homepage + assets
+// Static files
 // -----------------------------
+// Serve Tech Portal (garage)
+app.use("/garage", express.static(path.join(__dirname, "public/garage")));
+// Root static
 app.use("/", express.static(path.join(__dirname, "public")));
-app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-const port = Number(process.env.PORT || 8092);
-app.listen(port, () => process.stdout.write(String(port)));
+// -----------------------------
+// Start
+// -----------------------------
+const port = +(process.env.PORT || 8080);
+app.listen(port, () => {
+  console.log(`[tech-gateway] listening on :${port}`);
+});

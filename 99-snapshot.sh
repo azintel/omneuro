@@ -1,67 +1,50 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Where to write the snapshot (override: OUTDIR=snapshot ./scripts/99-snapshot.sh)
+# Where the snapshot files will go (override by: OUTDIR=foo ./99-snapshot.sh)
 OUTDIR="${OUTDIR:-snapshot}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-OUTFILE="${OUTDIR}/code-snapshot-${STAMP}.txt"
-LISTFILE="${OUTDIR}/filelist-${STAMP}.txt"
+FILELIST="$OUTDIR/filelist-$STAMP.txt"
+OUTFILE="$OUTDIR/code-snapshot-$STAMP.txt"
 
-# Repo root (this script assumes you run from the repo root)
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-# Ensure outdir
+# Create output dir
 mkdir -p "$OUTDIR"
 
-# Extensions we care about (hand-authored files)
-# ts/tsx/js/jsx/mjs/cjs/json/md/sql/db/html/css/yaml/yml/sh/zsh/py/xml/cfg/conf/csv/txt
-INCLUDE_EXPR='
-  -name "*.ts"  -o -name "*.tsx"  -o
-  -name "*.js"  -o -name "*.jsx"  -o
-  -name "*.mjs" -o -name "*.cjs"  -o
-  -name "*.json" -o -name "*.md"  -o
-  -name "*.sql" -o -name "*.db"   -o
-  -name "*.html" -o -name "*.css" -o
-  -name "*.yaml" -o -name "*.yml" -o
-  -name "*.sh" -o -name "*.zsh"   -o
-  -name "*.py" -o -name "*.xml"   -o
-  -name "*.cfg" -o -name "*.conf" -o
-  -name "*.csv" -o -name "*.txt"
-'
+# -------- Select only handwritten code under apps/ --------
+# extensions: ts, js, cjs, mjs, json, html, css, sql, md, xml, yml, yaml
+# paths to exclude: build outputs, dependencies, vcs, cache, etc.
+find apps \
+  -type f \( \
+      -name '*.ts'  -o -name '*.js'  -o -name '*.cjs' -o -name '*.mjs' \
+   -o -name '*.json' -o -name '*.html' -o -name '*.css' \
+   -o -name '*.sql'  -o -name '*.md'  -o -name '*.xml' \
+   -o -name '*.yml'  -o -name '*.yaml' \
+  \) \
+  -not -path '*/node_modules/*' \
+  -not -path '*/dist/*' \
+  -not -path '*/build/*' \
+  -not -path '*/.git/*' \
+  -not -path '*/.venv/*' \
+  -not -path '*/.cache/*' \
+  -not -path '*/build-logs/*' \
+  -not -path '*/coverage/*' \
+  -not -path '*/_snapshots/*' \
+  -not -name '._*' \
+  | sort > "$FILELIST"
 
-# Directories to ignore
-PRUNE_DIRS='
-  -path "*/node_modules/*" -o
-  -path "*/dist/*"         -o
-  -path "*/build/*"        -o
-  -path "*/.git/*"         -o
-  -path "*/.venv/*"        -o
-  -path "*/.pytest_cache/*" -o
-  -path "*/.next/*"        -o
-  -path "*/out/*"          -o
-  -path "*/coverage/*"     -o
-  -path "*/tmp/*"          -o
-  -path "*/.cache/*"       -o
-  -path "*/_snapshot/*"    -o
-  -path "*/snapshot/*"     -o
-  -path "*/build-logs/*"
-'
-
-# Build the file list
-# shellcheck disable=SC2086
-find "$ROOT_DIR" -type d \( $PRUNE_DIRS \) -prune -o \
-  -type f \( $INCLUDE_EXPR \) -print | sed "s|^$ROOT_DIR/||" | sort > "$LISTFILE"
-
-# Aggregate into one text file
+# -------- Aggregate file contents into a single text file --------
 : > "$OUTFILE"
 COUNT=0
-while IFS= read -r f; do
-  COUNT=$((COUNT+1))
-  printf '\n===== BEGIN: %s =====\n' "$f" >> "$OUTFILE"
-  # Use cat; if a file is binary (e.g., a .db), we still include bytes; that’s fine for reference.
-  # If you’d rather skip .db, remove it from INCLUDE_EXPR above.
-  cat "$ROOT_DIR/$f" >> "$OUTFILE" 2>/dev/null || true
-  printf '\n===== END: %s =====\n' "$f" >> "$OUTFILE"
-done < "$LISTFILE"
 
-printf '\nSnapshot complete: %d files\nOutput: %s\n' "$COUNT" "$OUTFILE"
+# Use null-delimited loop to be safe with spaces in filenames
+# (BSD/macOS find supports -print0)
+while IFS= read -r f; do
+  COUNT=$((COUNT + 1))
+  {
+    printf "\n\n===== BEGIN: %s =====\n\n" "$f"
+    cat "$f" || true
+    printf "\n\n===== END: %s =====\n" "$f"
+  } >> "$OUTFILE"
+done < "$FILELIST"
+
+printf "\nSnapshot complete: %d files\nOutput: %s\nList:   %s\n" "$COUNT" "$OUTFILE" "$FILELIST"
