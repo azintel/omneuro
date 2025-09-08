@@ -5,6 +5,8 @@ import chatRouter from "./routes/chat.js";
 import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
+import blogRouter from "./routes/blog.js"; // ensure blog router is mounted
+import authRouter from "./auth.js";        // expose garage auth endpoints under /api/garage
 import cors from "cors";
 import express from "express";
 import path from "node:path";
@@ -24,10 +26,14 @@ const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
 // Paths under /api/* that remain public (exact matches)
 const API_PUBLIC_PATHS = new Set<string>([
-  "/health",             // /api/health
-  "/tech/health",        // /api/tech/health
-  "/garage/health",      // /api/garage/health
-  "/scheduler/health",   // /api/scheduler/health
+  "/health",               // /api/health
+  "/tech/health",          // /api/tech/health
+  "/garage/health",        // /api/garage/health
+  "/scheduler/health",     // /api/scheduler/health
+
+  // allow public magic-link endpoints for clients
+  "/garage/auth/request",
+  "/garage/auth/verify",
 ]);
 
 function requireBasicAuthForApi(
@@ -57,7 +63,7 @@ function requireBasicAuthForApi(
 app.use(express.json({ limit: "5mb" }));
 app.use(cors());
 
-// simple request id
+// request id
 app.use((req, res, next) => {
   const hdr = req.headers["x-request-id"];
   const rid = (Array.isArray(hdr) ? hdr[0] : hdr) || randomUUID();
@@ -71,63 +77,38 @@ app.use((req, res, next) => {
 // -----------------------------
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-// Redundant direct tech/health so probes succeed even if routers change.
 app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
 
-app.get("/admin/diag", (req, res) => {
-  const key = process.env.DIAG_KEY || "";
-  if (key && req.query.key !== key) return res.status(403).json({ error: "forbidden" });
-
-  const tryRead = (p: string, n = 200) => {
-    try {
-      const s = fs.readFileSync(p, "utf8");
-      const lines = s.trim().split("\n");
-      return lines.slice(-n);
-    } catch {
-      return null;
-    }
-  };
-
-  res.json({
-    ok: true,
-    pid: process.pid,
-    cwd: process.cwd(),
-    publicIndexExists: fs.existsSync(path.join(__dirname, "public", "index.html")),
-    pm2: {
-      outTail: tryRead("/home/ubuntu/.pm2/logs/tech-gateway-out.log"),
-      errTail: tryRead("/home/ubuntu/.pm2/logs/tech-gateway-error.log"),
-    },
-  });
-});
+// -----------------------------
+// Static website (homepage + garage UI)
+// -----------------------------
+app.use("/", express.static(path.join(__dirname, "public"), { fallthrough: true }));
 
 // -----------------------------
-// Protect /api/* after declaring public paths
+// API (Basic Auth protected except API_PUBLIC_PATHS)
 // -----------------------------
 app.use("/api", requireBasicAuthForApi);
 
-// -----------------------------
-// Routers
-// -----------------------------
-app.use("/api", chatRouter);
+// Mount garage auth under /api/garage/*
+app.use("/api/garage", authRouter);
+
+// Mount app slices
 app.use("/api/tech", techRouter);
+app.use("/api/catalog", catalogRouter);
 app.use("/api/garage", garageRouter);
-app.use("/api/catalog", catalogRouter);     // admin CRUD for services/fees
-app.use("/api/garage/quotes", quotesRouter); // client-facing quote endpoints
-app.use("/api/scheduler", schedulerRouter);  // health + create appointments
+app.use("/api/garage/quotes", quotesRouter);
+app.use("/api/scheduler", schedulerRouter);
+app.use("/api/blog", blogRouter);
 
 // -----------------------------
-// Static (public) assets
+// 404 for API
 // -----------------------------
-// Make /garage WITHOUT slash work (our redeploy script probes that)
-app.get("/garage", (_req, res) => res.redirect(301, "/garage/"));
-// Serve the garage bundle explicitly (so /garage/ always resolves index.html)
-app.use("/garage", express.static(path.join(__dirname, "public", "garage")));
-app.get("/garage/", (_req, res) =>
-  res.sendFile(path.join(__dirname, "public", "garage", "index.html"))
-);
-// Root site (homepage + shared assets)
-app.use("/", express.static(path.join(__dirname, "public")));
-app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+app.use("/api", (_req, res) => res.status(404).json({ ok: false, error: "not_found" }));
 
-const port = Number(process.env.PORT || 8092);
-app.listen(port, () => process.stdout.write(String(port)));
+// -----------------------------
+// Server
+// -----------------------------
+const PORT = Number(process.env.PORT || 8080);
+app.listen(PORT, () => {
+  console.log(`[tech-gateway] listening on :${PORT}`);
+});

@@ -1,68 +1,58 @@
 // apps/tech-gateway/src/auth.ts
-import express from "express";
-import type { RequestHandler } from "express";
-import crypto from "crypto";
+
+import { Router } from "express";
 import cookieParser from "cookie-parser";
-import db from "./db.js";
-export const COOKIE_NAME = "jj_sess";
+import crypto from "node:crypto";
+import { db } from "./db.js";
+import { sendMagicLinkEmail } from "./lib/mailer.js";
 
-const router = express.Router();
-
-// make sure whoever mounts this also uses cookieParser
+const router = Router();
 router.use(cookieParser());
 
-type SessionRow = {
-  id: string;
-  user_id: string;
-  email: string;
-  name: string | null;
-  phone: string | null;
-};
+const COOKIE_NAME = "jjz_garage_sid";
 
-// Require an authenticated session; attaches req.user
-export const requireAuth: RequestHandler = (req, res, next) => {
-  const cookies = (req as any).cookies as Record<string, string> | undefined;
-  const sid = cookies?.[COOKIE_NAME];
-  if (!sid) return res.status(401).json({ error: "unauthenticated" });
-
-  const row = db
-    .prepare(
-      `
-      SELECT s.id, s.user_id, u.email, u.name, u.phone
-      FROM sessions s
-      JOIN users u ON u.id = s.user_id
-      WHERE s.id = ?`
-    )
-    .get(sid) as SessionRow | undefined;
-
-  if (!row) return res.status(401).json({ error: "unauthenticated" });
-
-  // touch last_seen
-  db.prepare(`UPDATE sessions SET last_seen = datetime('now') WHERE id = ?`).run(sid);
-
-  (req as any).user = {
-    id: row.user_id,
-    email: row.email,
-    name: row.name ?? "",
-    phone: row.phone ?? "",
-    session_id: row.id,
-  };
-
+// Attach req.user from session (if any)
+router.use((req, _res, next) => {
+  try {
+    const cookies = (req as any).cookies as Record<string, string> | undefined;
+    const sid = cookies?.[COOKIE_NAME];
+    if (sid) {
+      const row = db
+        .prepare(
+          `
+          SELECT u.email
+          FROM sessions s
+          JOIN users u ON u.id = s.user_id
+          WHERE s.id = ?
+        `
+        )
+        .get(sid) as { email: string } | undefined;
+      if (row?.email) (req as any).user = { email: row.email };
+    }
+  } catch {}
   next();
-};
+});
 
-// ---- Magic-link endpoints (same behavior as before) ----
+// Exported middleware to require a signed-in user (used by blog/admin APIs)
+export function requireAuth(req: any, res: any, next: any) {
+  if (req?.user?.email) return next();
+  res.status(401).json({ ok: false, error: "unauthorized" });
+}
+
+// ---- Magic-link endpoints ----
 
 // request a login link
-router.post("/auth/request", (req, res) => {
+router.post("/auth/request", async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
     return res.status(400).json({ error: "invalid email" });
   }
 
+  // ensure user
   db.prepare(`INSERT INTO users (email) VALUES (?) ON CONFLICT(email) DO NOTHING`).run(email);
   const user = db.prepare(`SELECT id FROM users WHERE email=?`).get(email) as { id: string };
 
+  // create token
   const token = crypto.randomBytes(16).toString("hex");
   const expires = new Date(Date.now() + 15 * 60_000).toISOString().replace("T", " ").split(".")[0];
 
@@ -74,14 +64,18 @@ router.post("/auth/request", (req, res) => {
 
   const base = process.env.PUBLIC_TECH_BASE_URL || "https://tech.juicejunkiez.com";
   const magicLink = `${base}/api/garage/auth/verify?token=${token}`;
-  console.log("[auth] magic link:", magicLink);
+
+  try {
+    await sendMagicLinkEmail(email, magicLink);
+  } catch (e: any) {
+    // Don't leak send errors to the client; log and still respond generic
+    console.error("[auth] email send failed:", e?.message || e);
+  }
 
   return res.json({
     ok: true,
-    message:
-      process.env.NODE_ENV === "production"
-        ? "If this email exists, a sign-in link has been sent."
-        : `dev link: ${magicLink}`,
+    // always generic to avoid email enumeration
+    message: "If this email exists, a sign-in link has been sent.",
   });
 });
 
