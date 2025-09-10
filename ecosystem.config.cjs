@@ -32,11 +32,11 @@ module.exports = {
         // Scheduler TZ
         SCHED_TZ: process.env.SCHED_TZ || 'America/New_York',
 
-        // BLOG (must be present in PM2 env for app to see them)
-        BLOG_S3_BUCKET:  process.env.BLOG_S3_BUCKET  || '',
-        BLOG_BASE_URL:   process.env.BLOG_BASE_URL   || '',
-        BLOG_AWS_REGION: process.env.BLOG_AWS_REGION || (process.env.AWS_REGION || 'us-east-2'),
-        BLOG_SITEMAP_KEY:process.env.BLOG_SITEMAP_KEY|| 'blog/sitemap.xml',
+        // BLOG (required for blog publish/sitemap)
+        BLOG_S3_BUCKET:  'juicejunkiez-site-prod',
+        BLOG_BASE_URL:   'https://tech.juicejunkiez.com/blog',
+        BLOG_AWS_REGION: 'us-east-2',
+        BLOG_SITEMAP_KEY:'blog/sitemap.xml',
       },
     },
   ],
