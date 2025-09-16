@@ -21,41 +21,42 @@ getp() {
     --query "Parameter.Value" --output text 2>/dev/null || true
 }
 
+mask(){ sed -E 's/(.{4}).+(.{4})/\1…\2/'; }
+
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
 # Core IDs (Sheets/Calendar/Scheduler)
 export SHEETS_SPREADSHEET_ID="$(getp "/omneuro/google/sheets_spreadsheet_id")"
 export GOOGLE_CALENDAR_ID="$(getp "/omneuro/google/calendar_id")"
 export SCHED_SPREADSHEET_ID="$(getp "/omneuro/google/scheduler_spreadsheet_id")"
 
-# Blog (for sitemap publishing)
+# Blog (site + sitemap publishing)
 export BLOG_S3_BUCKET="$(getp "/omneuro/blog/s3_bucket")"
 export BLOG_BASE_URL="$(getp "/omneuro/blog/base_url")"
 export BLOG_AWS_REGION="$(getp "/omneuro/blog/aws_region")"
 export BLOG_SITEMAP_KEY="$(getp "/omneuro/blog/sitemap_key")"
 
-# Mailer / Auth
-export MAIL_TRANSPORT="$(getp "/omneuro/mail/transport")"                 # ses|smtp|log
-export MAIL_FROM="$(getp "/omneuro/mail/from")"
-
-# SES (optional)
+# Mailer
+export MAIL_TRANSPORT="$(getp "/omneuro/mail/transport")"           # ses|smtp|log
+export MAIL_FROM="$(getp "/omneuro/mail/from")"                     # 'Juice Junkiez <notifications@...>'
 export MAIL_SES_REGION="$(getp "/omneuro/mail/ses/region")"
-
-# SMTP (fallback / Gmail)
 export SMTP_HOST="$(getp "/omneuro/mail/smtp/host")"
 export SMTP_PORT="$(getp "/omneuro/mail/smtp/port")"
 export SMTP_SECURE="$(getp "/omneuro/mail/smtp/secure")"
 export SMTP_USER="$(getp "/omneuro/mail/smtp/user")"
 export SMTP_PASS="$(getp "/omneuro/mail/smtp/pass")"
 
-# Public base for magic-link redirects
+# Magic-link base (for email links)
 export PUBLIC_TECH_BASE_URL="$(getp "/omneuro/tech/public_base_url")"
 
-# Normalize empty/None
+# Normalize defaults
 [[ -z "${BLOG_SITEMAP_KEY:-}" || "${BLOG_SITEMAP_KEY}" == "None" ]] && BLOG_SITEMAP_KEY="blog/sitemap.xml"
 [[ -z "${BLOG_AWS_REGION:-}" || "${BLOG_AWS_REGION}" == "None" ]] && BLOG_AWS_REGION="$AWS_REGION"
+[[ -z "${BLOG_BASE_URL:-}"   || "${BLOG_BASE_URL}"   == "None" ]] && BLOG_BASE_URL="https://juicejunkiez.com"
+[[ -z "${MAIL_TRANSPORT:-}"  || "${MAIL_TRANSPORT}"  == "None" ]] && MAIL_TRANSPORT="ses"
+[[ -z "${MAIL_SES_REGION:-}" || "${MAIL_SES_REGION}" == "None" ]] && MAIL_SES_REGION="$AWS_REGION"
+[[ -z "${PUBLIC_TECH_BASE_URL:-}" || "${PUBLIC_TECH_BASE_URL}" == "None" ]] && PUBLIC_TECH_BASE_URL="https://tech.juicejunkiez.com"
 
-# Log what we pulled (masked where appropriate)
-mask(){ sed -E 's/(.{4}).+(.{4})/\1…\2/'; }
+# Log what we pulled (masked)
 printf "[SSM] SHEETS_SPREADSHEET_ID=%s\n" "$(printf '%s' "${SHEETS_SPREADSHEET_ID:-<none>}" | mask)"
 printf "[SSM] GOOGLE_CALENDAR_ID=%s\n"     "$(printf '%s' "${GOOGLE_CALENDAR_ID:-<none>}" | mask)"
 printf "[SSM] SCHED_SPREADSHEET_ID=%s\n"   "$(printf '%s' "${SCHED_SPREADSHEET_ID:-<none>}" | mask)"
@@ -69,8 +70,8 @@ echo   "[SSM] MAIL_SES_REGION=${MAIL_SES_REGION:-<none>}"
 echo   "[SSM] SMTP_HOST=${SMTP_HOST:-<none>}"
 echo   "[SSM] SMTP_PORT=${SMTP_PORT:-<none>}"
 echo   "[SSM] SMTP_SECURE=${SMTP_SECURE:-<none>}"
-printf "[SSM] SMTP_USER=%s\n" "$(printf '%s' "${SMTP_USER:-<none>}" | mask)"
-printf "[SSM] SMTP_PASS=%s\n" "$(printf '%s' "${SMTP_PASS:-<none>}" | mask)"
+echo   "[SSM] SMTP_USER=${SMTP_USER:-<none>}"
+echo   "[SSM] SMTP_PASS=$( [[ -n "${SMTP_PASS:-}" ]] && echo '********' || echo '<none>' )"
 echo   "[SSM] PUBLIC_TECH_BASE_URL=${PUBLIC_TECH_BASE_URL:-<none>}"
 
 echo "=== [REDEPLOY] Building apps (npm ci + build) ==="
@@ -88,15 +89,16 @@ ls -1 apps/tech-gateway/dist/{db,routes,server}.js 2>/dev/null || true
 ls -1 apps/brain-api/dist/server.js 2>/dev/null || true
 
 echo "=== [REDEPLOY] Restart PM2 (with env) ==="
-# IMPORTANT: pass envs into PM2 so tech-gateway sees mail + blog + auth config
-SHEETS_SPREADSHEET_ID="$SHEETS_SPREADSHEET_ID" \
-GOOGLE_CALENDAR_ID="$GOOGLE_CALENDAR_ID" \
-SCHED_SPREADSHEET_ID="$SCHED_SPREADSHEET_ID" \
+# IMPORTANT: ensure these envs are present in PM2's app env by passing them and
+# also having them listed in ecosystem.config.cjs.
+SHEETS_SPREADSHEET_ID="${SHEETS_SPREADSHEET_ID:-}" \
+GOOGLE_CALENDAR_ID="${GOOGLE_CALENDAR_ID:-}" \
+SCHED_SPREADSHEET_ID="${SCHED_SPREADSHEET_ID:-}" \
 BLOG_S3_BUCKET="${BLOG_S3_BUCKET:-}" \
 BLOG_BASE_URL="${BLOG_BASE_URL:-}" \
 BLOG_AWS_REGION="${BLOG_AWS_REGION:-$AWS_REGION}" \
 BLOG_SITEMAP_KEY="${BLOG_SITEMAP_KEY:-blog/sitemap.xml}" \
-MAIL_TRANSPORT="${MAIL_TRANSPORT:-log}" \
+MAIL_TRANSPORT="${MAIL_TRANSPORT:-ses}" \
 MAIL_FROM="${MAIL_FROM:-Juice Junkiez <notifications@juicejunkiez.com>}" \
 MAIL_SES_REGION="${MAIL_SES_REGION:-$AWS_REGION}" \
 SMTP_HOST="${SMTP_HOST:-}" \
@@ -127,10 +129,7 @@ console.log({
   MAIL_FROM: e.MAIL_FROM||"<unset>",
   MAIL_SES_REGION: e.MAIL_SES_REGION||"<unset>",
   SMTP_HOST: e.SMTP_HOST||"<unset>",
-  SMTP_PORT: e.SMTP_PORT||"<unset>",
-  SMTP_SECURE: e.SMTP_SECURE||"<unset>",
   SMTP_USER: e.SMTP_USER||"<unset>",
-  SMTP_PASS: e.SMTP_PASS ? "<set>" : "<unset>",
   PUBLIC_TECH_BASE_URL: e.PUBLIC_TECH_BASE_URL||"<unset>"
 });
 '
@@ -148,6 +147,14 @@ if [[ -s /tmp/blog-sitemap.xml ]]; then
 else
   echo "[WARN] could not fetch blog sitemap from S3"
 fi
+
+echo "=== [REDEPLOY] Sync blog content to web root ==="
+sudo mkdir -p /var/www/juicejunkiez.com/blog
+# exclude sitemap.xml (already copied to web root)
+aws s3 sync "s3://${BLOG_S3_BUCKET}/blog" /var/www/juicejunkiez.com/blog \
+  --region "${BLOG_AWS_REGION}" --delete --exclude "sitemap.xml" || true
+sudo chown -R root:root /var/www/juicejunkiez.com/blog || true
+echo "[OK] blog content synced to /var/www/juicejunkiez.com/blog"
 
 echo "=== [REDEPLOY] Local health checks ==="
 tries=40
