@@ -2,9 +2,59 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Juice Junkiez • PEV Service & Shop</title>
+
+  <!-- Updated SEO title -->
+  <title>Juice Junkiez | Baltimore E-Bike, E-Scooter, EUC & PEV Repair Shop</title>
+
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Personal Electric Vehicle service, repairs, parts, and accessories. Baltimore, MD." />
+
+  <!-- Local, service-rich meta description -->
+  <meta name="description" content="Baltimore’s personal electric vehicle (PEV) repair shop for e-bikes, e-scooters, e-skateboards, and electric unicycles (EUC). Diagnostics, repairs, upgrades, custom EV builds, and custom lithium battery packs." />
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://juicejunkiez.com/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Juice Junkiez | Baltimore E-Bike, E-Scooter, EUC & PEV Repair Shop">
+  <meta property="og:description" content="Baltimore’s PEV repair shop for e-bikes, e-scooters, e-skateboards, and EUCs. Repairs, upgrades, custom builds, and custom battery packs.">
+  <meta property="og:url" content="https://juicejunkiez.com/">
+  <meta property="og:image" content="https://juicejunkiez.com/img/jj-logo.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Juice Junkiez | Baltimore E-Bike, E-Scooter, EUC & PEV Repair Shop">
+  <meta name="twitter:description" content="Repairs, upgrades, custom builds, and custom battery packs for PEVs in Baltimore.">
+  <meta name="twitter:image" content="https://juicejunkiez.com/img/jj-logo.png">
+
+  <!-- LocalBusiness JSON-LD (static aggregate rating so Google has a guaranteed signal) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    "name": "Juice Junkiez",
+    "image": "https://juicejunkiez.com/img/jj-logo.png",
+    "url": "https://juicejunkiez.com/",
+    "telephone": "+1-951-296-8725",
+    "priceRange": "$$",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "409 S Addison St",
+      "addressLocality": "Baltimore",
+      "addressRegion": "MD",
+      "postalCode": "21223",
+      "addressCountry": "US"
+    },
+    "areaServed": ["Baltimore", "Anne Arundel County", "Maryland"],
+    "description": "Personal electric vehicle (PEV) diagnostics, repair, and upgrades for e-bikes, e-scooters, e-skateboards, and electric unicycles (EUC). Custom EV builds and custom lithium battery packs.",
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "5.0",
+      "reviewCount": "9"
+    }
+  }
+  </script>
+
   <style>
     :root{
       --bg:#0a0a0a;         --card:#131313;       --ink:#f5f5f5;        --muted:#b9b9b9;
@@ -37,13 +87,23 @@
     .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:14px}
     .kv b{color:var(--ink)}
     .pill{display:inline-block;background:#0f0f0f;border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px}
+    .stars{letter-spacing:1px}
+
+    /* Reviews list */
+    .reviews-list{list-style:none;padding:0;margin:10px 0 0}
+    .review{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+    .review .author{color:var(--ink);font-weight:600}
+    .review .rating{font-size:12px}
+    .review .text{color:var(--muted)}
+    .review .date{font-size:12px;color:var(--muted)}
   </style>
 </head>
 <body>
 <header>
   <div class="brand">
-    <img src="/img/jj-logo.png" alt="Juice Junkiez Logo" />
-    <h1>Juice Junkiez</h1>
+    <img src="/img/jj-logo.png" alt="Juice Junkiez – Baltimore E-Bike & E-Scooter Repair Logo" />
+    <!-- Keep H1 but make it keyword-rich while preserving brand -->
+    <h1>Juice Junkiez — Baltimore E-Bike, E-Scooter, EUC & PEV Repair</h1>
   </div>
   <div class="badge"><span class="dot"></span>Baltimore • PEV Service & Shop</div>
 </header>
@@ -52,7 +112,7 @@
   <div class="grid">
     <section class="card">
       <h2><span class="gold">Personal Electric Vehicle</span> Experts</h2>
-      <p>Repairs, diagnostics, upgrades, and parts for scooters, EUCs, e-bikes, and more.</p>
+      <p>Repairs, diagnostics, upgrades, and parts for <b>e-bikes</b>, <b>e-scooters</b>, <b>e-skateboards</b> (esk8), and <b>electric unicycles</b> (EUC). We also build custom electric vehicles and craft custom lithium battery packs for maximum power and range. Serving Baltimore, Anne Arundel County, and greater Maryland.</p>
       <div class="links">
         <!-- Absolute URL to tech subdomain so caches and docroot don’t confuse the link -->
         <a class="btn btn--accent" href="https://tech.juicejunkiez.com/garage/">Client Garage</a>
@@ -75,15 +135,30 @@
     </aside>
   </div>
 
+  <!-- Reviews + Services + Updates row -->
   <div class="cols" style="margin-top:16px;">
+    <div class="card" aria-label="customer reviews">
+      <h2>Reviews</h2>
+      <p class="muted">
+        <span class="stars" aria-label="5 out of 5 stars">★★★★★</span> <b>5.0</b> rating on Google · <b>9</b> reviews —
+        <a class="gold" href="https://search.google.com/local/reviews?placeid=ChIJ9VJWd14dyIkRLwlOW1DHJjI" rel="nofollow noopener" id="google-reviews-link">Read our Google reviews</a>
+      </p>
+
+      <!-- Live reviews container (populated by script; fails safe if API not present) -->
+      <ul class="reviews-list" id="reviews-list" aria-live="polite">
+        <!-- JS will inject up to 3 recent reviews here -->
+      </ul>
+
+      <noscript>
+        <p class="muted">Enable JavaScript to see live review quotes.</p>
+      </noscript>
+    </div>
+
     <div class="card">
       <h2>Services</h2>
       <p class="muted">Diagnostics, battery, controller, lighting, firmware, waterproofing, wiring, accessories, and custom builds.</p>
     </div>
-    <div class="card">
-      <h2>Shop</h2>
-      <p class="muted">Curated parts and consumables. Secure payments with Stripe.</p>
-    </div>
+
     <div class="card">
       <h2>Automated Updates</h2>
       <p class="muted">Omneuro keeps you informed with job updates and invoices via your preferred channel.</p>
@@ -94,6 +169,54 @@
 <footer>
   © <span id="y"></span> Juice Junkiez • Powered by Omneuro
 </footer>
-<script>document.getElementById('y').textContent=new Date().getFullYear()</script>
+
+<script>
+  document.getElementById('y').textContent = new Date().getFullYear();
+
+  // ---- Live Reviews wiring ----
+  // This expects a JSON endpoint that returns:
+  // { rating: 5.0, total: 9, reviews: [{author_name, rating, text, time, relative_time_description}] }
+  // Example endpoint (adjust if you deploy elsewhere):
+  const PLACE_ID = "ChIJ9VJWd14dyIkRLwlOW1DHJjI";
+  const REVIEWS_API_URL = `https://tech.juicejunkiez.com/api/public/reviews?place_id=${encodeURIComponent(PLACE_ID)}`;
+
+  (async function loadReviews(){
+    try {
+      const res = await fetch(REVIEWS_API_URL, { mode: "cors", credentials: "omit", cache: "no-store" });
+      if (!res.ok) return; // silent fallback
+      const data = await res.json();
+      if (!data || !Array.isArray(data.reviews)) return;
+
+      // Update summary if backend provides fresher counts
+      if (typeof data.rating === "number" && typeof data.total === "number") {
+        const summaryP = document.querySelector('[aria-label="customer reviews"] p.muted');
+        if (summaryP) {
+          summaryP.innerHTML =
+            `<span class="stars" aria-label="${data.rating.toFixed(1)} out of 5 stars">★★★★★</span> <b>${data.rating.toFixed(1)}</b> rating on Google · <b>${data.total}</b> reviews — ` +
+            `<a class="gold" href="https://search.google.com/local/reviews?placeid=${PLACE_ID}" rel="nofollow noopener" id="google-reviews-link">Read our Google reviews</a>`;
+        }
+      }
+
+      // Render up to 3 most recent reviews
+      const list = document.getElementById("reviews-list");
+      list.innerHTML = "";
+      data.reviews.slice(0,3).forEach(r => {
+        const li = document.createElement("li");
+        li.className = "review";
+        const stars = "★★★★★".slice(0, Math.round(r.rating || 5));
+        const dateStr = r.time ? new Date(r.time * 1000).toLocaleDateString() : (r.relative_time_description || "");
+        li.innerHTML = `
+          <div class="author">${r.author_name || "Customer"}</div>
+          <div class="rating"><span class="stars" aria-label="${r.rating || 5} out of 5 stars">${stars}</span></div>
+          <p class="text">${(r.text || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
+          <div class="date">${dateStr}</div>
+        `;
+        list.appendChild(li);
+      });
+    } catch (e) {
+      // No console noise in production; fallback silently
+    }
+  })();
+</script>
 </body>
 </html>
