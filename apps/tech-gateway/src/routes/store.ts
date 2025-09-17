@@ -1,118 +1,49 @@
-// apps/tech-gateway/src/routes/store.ts
+// ////apps/tech-gateway/src/routes/store.ts
 import express from "express";
 import type { Request, Response } from "express";
+import {
+  storeAllProductsPublic,
+  storeGetProduct,
+  storeUpsertProduct,
+  storeSetStripeIds,
+  storeGetStripeIds,   // <- use this (replaces storeFindStripeIds)
+  storeTouchSeenStripe,
+  storeListCompat,
+  storeAddCompat,
+} from "../db.js";
+import type { StoreProduct, StripeIds } from "../db.js";
 
-// ---- Config from env (injected by PM2/redeploy) ----
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_SUCCESS_URL =
-  process.env.STORE_SUCCESS_URL || "https://juicejunkiez.com/store/?status=success";
+  process.env.STORE_SUCCESS_URL || "https://juicejunkiez.com/store/success.html";
 const STRIPE_CANCEL_URL =
-  process.env.STORE_CANCEL_URL || "https://juicejunkiez.com/store/?status=cancel";
-const ADMIN_TOKEN = process.env.TECH_GATEWAY_ACCESS_TOKEN || ""; // optional extra guard
+  process.env.STORE_CANCEL_URL || "https://juicejunkiez.com/store/cancel.html";
+const ADMIN_TOKEN = process.env.TECH_GATEWAY_ACCESS_TOKEN || "";
 
-// ---- Lazy Stripe client (avoids build errors if key absent) ----
-let stripeSingleton: any = null;
+let stripe: any = null;
 async function getStripe() {
   if (!STRIPE_SECRET_KEY) return null;
-  if (!stripeSingleton) {
+  if (!stripe) {
     const Stripe = (await import("stripe")).default;
-    stripeSingleton = new Stripe(STRIPE_SECRET_KEY);
+    stripe = new Stripe(STRIPE_SECRET_KEY);
   }
-  return stripeSingleton;
+  return stripe;
 }
 
 const router = express.Router();
 
-// ---- Product model (in-memory catalog for now) ----
-type Product = {
-  id: string;          // your catalog id (string you reference from the storefront)
-  name: string;
-  description: string;
-  price: number;       // display only, cents
-  currency: "usd";
-  image: string;       // public URL; if empty we'll try to read from Stripe
-  priceId: string;     // Stripe Price ID used at checkout
-  active: boolean;
-  stock?: number | null;
-};
+// ---------- health ----------
+router.get("/health", (_req, res) =>
+  res.json({ ok: true, service: "store", stripe: STRIPE_SECRET_KEY ? "configured" : "missing_key" })
+);
 
-// Seed examples (safe to keep)
-const PRODUCTS: Product[] = [
-  {
-    id: "jj-3dp-mount-small",
-    name: "3D Printed Scooter Phone Mount (Small)",
-    description: "Durable PETG phone mount sized for smaller handlebars.",
-    price: 1999,
-    currency: "usd",
-    image: "/store/images/phone-mount-small.jpg",
-    priceId: "price_XXX_REPLACE_ME_SMALL",
-    active: true,
-  },
-  {
-    id: "jj-3dp-mount-large",
-    name: "3D Printed Scooter Phone Mount (Large)",
-    description: "PETG mount for thicker bars. Includes rubber shim.",
-    price: 2299,
-    currency: "usd",
-    image: "/store/images/phone-mount-large.jpg",
-    priceId: "price_XXX_REPLACE_ME_LARGE",
-    active: true,
-  },
-  {
-    id: "jj-3dp-battery-bracket",
-    name: "E-Bike Battery Bracket",
-    description: "Custom bracket for common down-tube battery packs.",
-    price: 3499,
-    currency: "usd",
-    image: "/store/images/battery-bracket.jpg",
-    priceId: "price_XXX_REPLACE_ME_BRACKET",
-    active: true,
-  },
-];
-
-// ---- Health (public) ----
-router.get("/health", (_req: Request, res: Response) => {
-  res.json({
-    ok: true,
-    service: "store",
-    stripe: STRIPE_SECRET_KEY ? "configured" : "missing_key",
-  });
-});
-
-// ---- Public: list products (hide priceId). If image is missing, try Stripe. ----
-router.get("/products", async (_req: Request, res: Response) => {
-  const s = await getStripe(); // may be null
-  const items = await Promise.all(
-    PRODUCTS.filter(p => p.active).map(async (p) => {
-      let image = p.image || "";
-      if (!image && s && p.priceId) {
-        try {
-          const price = await s.prices.retrieve(p.priceId);
-          const prodId = typeof price.product === "string" ? price.product : price.product?.id;
-          if (prodId) {
-            const sp = await s.products.retrieve(prodId);
-            if (Array.isArray(sp.images) && sp.images[0]) image = sp.images[0];
-          }
-        } catch {
-          // ignore; fail-safe to empty image
-        }
-      }
-      return {
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: p.price,
-        currency: p.currency,
-        image,
-        stock: p.stock ?? null,
-      };
-    })
-  );
+// ---------- public: list products ----------
+router.get("/products", (_req: Request, res: Response) => {
+  const items = storeAllProductsPublic();
   res.json({ ok: true, products: items });
 });
 
-// ---- Public: checkout from cart ----
-// body: { items: [{ id: string, quantity: number }, ...] }
+// ---------- public: checkout ----------
 router.post("/checkout", express.json(), async (req: Request, res: Response) => {
   try {
     const s = await getStripe();
@@ -123,12 +54,15 @@ router.post("/checkout", express.json(), async (req: Request, res: Response) => 
 
     const line_items: Array<{ price: string; quantity: number }> = [];
     for (const it of items) {
+      const pid = String(it?.id || "");
       const qty = Math.max(1, Number(it?.quantity || 0));
-      const product = PRODUCTS.find(p => p.id === String(it?.id) && p.active);
-      if (!product || !product.priceId) {
-        return res.status(400).json({ ok: false, error: `invalid_item:${it?.id}` });
+      if (!pid || !qty) return res.status(400).json({ ok: false, error: "bad_item" });
+
+      const ids = storeGetStripeIds(pid);
+      if (!ids?.stripe_price_id) {
+        return res.status(400).json({ ok: false, error: `missing_price:${pid}` });
       }
-      line_items.push({ price: product.priceId, quantity: qty });
+      line_items.push({ price: ids.stripe_price_id, quantity: qty });
     }
 
     const session = await s.checkout.sessions.create({
@@ -141,16 +75,16 @@ router.post("/checkout", express.json(), async (req: Request, res: Response) => 
       allow_promotion_codes: true,
     });
 
-    res.status(200).json({ ok: true, sessionId: session.id, url: session.url });
+    res.json({ ok: true, sessionId: session.id, url: session.url });
   } catch (err: any) {
     console.error("[store/checkout] error:", err?.message || err);
     res.status(500).json({ ok: false, error: "checkout_failed" });
   }
 });
 
-// ---- Admin guard (optional X-Access-Token; API itself is Basic-Auth gated) ----
+// ---------- admin guard ----------
 function requireAdmin(req: Request) {
-  if (!ADMIN_TOKEN) return; // skip if not configured
+  if (!ADMIN_TOKEN) return;
   const t = (req.header("x-access-token") || "").trim();
   if (t !== ADMIN_TOKEN) {
     const e: any = new Error("unauthorized");
@@ -159,81 +93,102 @@ function requireAdmin(req: Request) {
   }
 }
 
-// ---- Admin: upsert product. Either provide an existing priceId,
-//      or ask us to create a Product/Price in Stripe automatically. ----
-// Body variants:
-// A) With existing priceId:
-//    { id, name, description, price, currency, image, priceId, active, stock? }
-// B) Auto-create in Stripe (if priceId omitted):
-//    { id, name, description, price, currency, image, active, stock?,
-//      stripe: { productId?, images?: string[], metadata?: Record<string,string> } }
+// ---------- admin: upsert product (Option A or B) ----------
 router.post("/admin/products", express.json(), async (req: Request, res: Response) => {
   try {
     requireAdmin(req);
 
-    const {
+    const b = (req.body || {}) as any;
+
+    // Normalize input fields
+    const id = String(b.id || b.product_id || "").trim();
+    const name = String(b.name || "").trim();
+    const description = String(b.description || "").trim();
+    const priceDollars = Number(b.price ?? b.price_dollars ?? NaN);
+    const display_price_cents =
+      Number.isFinite(priceDollars) && priceDollars > 0
+        ? Math.round(priceDollars * 100)
+        : Number(b.display_price_cents ?? NaN);
+    const currency = (b.currency || "usd").toLowerCase();
+    const images: string[] = Array.isArray(b.images) ? b.images : (b.image ? [String(b.image)] : []);
+    const active = b.active !== false;
+    const stock = typeof b.stock === "number" ? b.stock : null;
+    const sort = typeof b.sort === "number" ? b.sort : null;
+    const brand = b.brand ? String(b.brand) : null;
+    const model = b.model ? String(b.model) : null;
+    const universal = !!b.universal;
+
+    if (!id || !name || !description || !Number.isFinite(display_price_cents) || !images.length) {
+      return res.status(400).json({ ok: false, error: "missing_fields" });
+    }
+
+    // If Option A, caller passes existing Stripe price ID (and optionally product id)
+    const stripe_price_id: string | undefined = b.priceId || b.stripe_price_id;
+    const stripe_product_id: string | undefined = b.stripe?.productId || b.stripe_product_id;
+
+    // If Option B, we will create in Stripe using provided details
+    const wantAutoStripe = !stripe_price_id;
+
+    // 1) upsert local product
+    const saved: StoreProduct = storeUpsertProduct({
       id,
       name,
       description,
-      price,
-      currency = "usd",
-      image,
-      active = true,
-      stock = null,
-      priceId,
-      stripe: sopts = {},
-    } = (req.body || {}) as any;
+      display_price_cents,
+      currency,
+      images,
+      active,
+      stock,
+      sort,
+      brand,
+      model,
+      universal,
+    });
 
-    if (!id || !name || !description || !image) {
-      return res.status(400).json({ ok: false, error: "missing_fields" });
-    }
-    if (typeof price !== "number" || price <= 0) {
-      return res.status(400).json({ ok: false, error: "invalid_price" });
-    }
+    // 2) ensure stripe ids
+    let finalStripeProductId: string | null = stripe_product_id || null;
+    let finalStripePriceId: string | null = stripe_price_id || null;
 
-    let finalPriceId = String(priceId || "");
-
-    if (!finalPriceId) {
+    if (wantAutoStripe) {
       const s = await getStripe();
       if (!s) return res.status(500).json({ ok: false, error: "stripe_not_configured" });
 
-      // Use provided productId or create one
-      let productId = String(sopts.productId || "");
-      if (!productId) {
-        const createdProduct = await s.products.create({
-          name,
-          description,
-          images: Array.isArray(sopts.images) && sopts.images.length ? sopts.images : [image],
-          metadata: sopts.metadata || {},
+      // create product (or reuse)
+      if (!finalStripeProductId) {
+        const createdP = await s.products.create({
+          name: saved.name,
+          description: saved.description,
+          images,
+          metadata: { local_product_id: saved.id },
         });
-        productId = createdProduct.id;
+        finalStripeProductId = createdP.id;
       }
 
+      // create price
       const createdPrice = await s.prices.create({
-        unit_amount: price,
-        currency,
-        product: productId,
+        unit_amount: saved.display_price_cents,
+        currency: saved.currency,
+        product: finalStripeProductId,
       });
-      finalPriceId = createdPrice.id;
+      finalStripePriceId = createdPrice.id;
+    } else {
+      // Option A: touch Stripe (best effort), persist link
+      const s = await getStripe();
+      if (s && finalStripePriceId) {
+        try {
+          const pr = await s.prices.retrieve(finalStripePriceId);
+          const pid = typeof (pr as any).product === "string" ? (pr as any).product : pr.product?.id;
+          finalStripeProductId = finalStripeProductId || pid || null;
+          storeTouchSeenStripe(saved.id);
+        } catch {/* ignore */}
+      }
     }
 
-    // Upsert into in-memory catalog
-    const idx = PRODUCTS.findIndex(p => p.id === id);
-    const record: Product = {
-      id,
-      name,
-      description,
-      price,
-      currency,
-      image,
-      priceId: finalPriceId,
-      active: !!active,
-      stock: typeof stock === "number" ? stock : null,
-    };
-    if (idx >= 0) PRODUCTS[idx] = record;
-    else PRODUCTS.push(record);
+    // 3) persist stripe id mapping
+    storeSetStripeIds(saved.id, finalStripeProductId, finalStripePriceId);
 
-    res.status(200).json({ ok: true, product: record });
+    // Return current local view
+    res.json({ ok: true, product: storeGetProduct(saved.id) });
   } catch (err: any) {
     const status = err?.status || 500;
     console.error("[store/admin/products] error:", err?.message || err);
@@ -241,14 +196,51 @@ router.post("/admin/products", express.json(), async (req: Request, res: Respons
   }
 });
 
-// ---- Admin: list raw catalog (verify what’s loaded) ----
+// ---------- admin: list raw ----------
 router.get("/admin/products", (req: Request, res: Response) => {
   try {
     requireAdmin(req);
-    res.json({ ok: true, products: PRODUCTS });
+    // raw list for admins = use public + ids from stripe table if needed
+    const rows = storeAllProductsPublic();
+    res.json({ ok: true, products: rows });
   } catch (err: any) {
     const status = err?.status || 500;
     res.status(status).json({ ok: false, error: err?.message || "unauthorized" });
+  }
+});
+
+// ---------- public: compatibility search ----------
+router.get("/compat", (req: Request, res: Response) => {
+  const brand = String(req.query.brand || "").trim();
+  const model = String(req.query.model || "").trim();
+  if (!brand || !model) return res.status(400).json({ ok: false, error: "missing_params" });
+
+  const rows = storeListCompat(brand, model);
+  const out = rows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    price: Math.round(p.display_price_cents) / 100,
+    currency: p.currency,
+    image: (p.images && p.images[0]) || "",
+    stock: p.stock ?? null,
+  }));
+  res.json({ ok: true, products: out });
+});
+
+// ---------- admin: add compatibility row ----------
+router.post("/admin/compat", express.json(), (req: Request, res: Response) => {
+  try {
+    requireAdmin(req);
+    const { product_id, vehicle_brand, vehicle_model, note } = req.body || {};
+    if (!product_id || !vehicle_brand || !vehicle_model) {
+      return res.status(400).json({ ok: false, error: "missing_fields" });
+    }
+    storeAddCompat(String(product_id), String(vehicle_brand), String(vehicle_model), note ? String(note) : undefined);
+    res.json({ ok: true });
+  } catch (err: any) {
+    const status = err?.status || 500;
+    res.status(status).json({ ok: false, error: err?.message || "admin_add_compat_failed" });
   }
 });
 
