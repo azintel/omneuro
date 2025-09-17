@@ -2,43 +2,48 @@
 import express from "express";
 import type { Request, Response } from "express";
 
-// ---- Stripe + config (from PM2 env) ----
+// ---- Config from env (injected by PM2/redeploy) ----
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-const STRIPE_SUCCESS_URL = process.env.STORE_SUCCESS_URL || "https://juicejunkiez.com/store/?status=success";
-const STRIPE_CANCEL_URL  = process.env.STORE_CANCEL_URL  || "https://juicejunkiez.com/store/?status=cancel";
-const ADMIN_TOKEN        = process.env.TECH_GATEWAY_ACCESS_TOKEN || ""; // optional: guard admin routes
+const STRIPE_SUCCESS_URL =
+  process.env.STORE_SUCCESS_URL || "https://juicejunkiez.com/store/?status=success";
+const STRIPE_CANCEL_URL =
+  process.env.STORE_CANCEL_URL || "https://juicejunkiez.com/store/?status=cancel";
+const ADMIN_TOKEN = process.env.TECH_GATEWAY_ACCESS_TOKEN || ""; // optional extra guard
 
-let stripe: any = null;
+// ---- Lazy Stripe client (avoids build errors if key absent) ----
+let stripeSingleton: any = null;
 async function getStripe() {
   if (!STRIPE_SECRET_KEY) return null;
-  if (!stripe) {
+  if (!stripeSingleton) {
     const Stripe = (await import("stripe")).default;
-    stripe = new Stripe(STRIPE_SECRET_KEY);
+    stripeSingleton = new Stripe(STRIPE_SECRET_KEY);
   }
-  return stripe;
+  return stripeSingleton;
 }
 
 const router = express.Router();
 
-// ---- Catalog model (in-memory for now) ----
+// ---- Product model (in-memory catalog for now) ----
 type Product = {
-  id: string;                // our internal ID (used by storefront/cart)
+  id: string;          // your catalog id (string you reference from the storefront)
   name: string;
   description: string;
-  price: number;             // display only (cents)
+  price: number;       // display only, cents
   currency: "usd";
-  image: string;             // /store/images/...
-  priceId: string;           // Stripe Price ID used at checkout
+  image: string;       // public URL; if empty we'll try to read from Stripe
+  priceId: string;     // Stripe Price ID used at checkout
   active: boolean;
-  stock?: number | null;     // optional stock
+  stock?: number | null;
 };
 
+// Seed examples (safe to keep)
 const PRODUCTS: Product[] = [
   {
     id: "jj-3dp-mount-small",
     name: "3D Printed Scooter Phone Mount (Small)",
     description: "Durable PETG phone mount sized for smaller handlebars.",
-    price: 1999, currency: "usd",
+    price: 1999,
+    currency: "usd",
     image: "/store/images/phone-mount-small.jpg",
     priceId: "price_XXX_REPLACE_ME_SMALL",
     active: true,
@@ -47,7 +52,8 @@ const PRODUCTS: Product[] = [
     id: "jj-3dp-mount-large",
     name: "3D Printed Scooter Phone Mount (Large)",
     description: "PETG mount for thicker bars. Includes rubber shim.",
-    price: 2299, currency: "usd",
+    price: 2299,
+    currency: "usd",
     image: "/store/images/phone-mount-large.jpg",
     priceId: "price_XXX_REPLACE_ME_LARGE",
     active: true,
@@ -56,34 +62,52 @@ const PRODUCTS: Product[] = [
     id: "jj-3dp-battery-bracket",
     name: "E-Bike Battery Bracket",
     description: "Custom bracket for common down-tube battery packs.",
-    price: 3499, currency: "usd",
+    price: 3499,
+    currency: "usd",
     image: "/store/images/battery-bracket.jpg",
     priceId: "price_XXX_REPLACE_ME_BRACKET",
     active: true,
   },
 ];
 
-// ---- Health (kept public but returns config state) ----
-router.get("/health", async (_req: Request, res: Response) => {
-  const s = Boolean(STRIPE_SECRET_KEY);
+// ---- Health (public) ----
+router.get("/health", (_req: Request, res: Response) => {
   res.json({
     ok: true,
     service: "store",
-    stripe: s ? "configured" : "missing_key",
+    stripe: STRIPE_SECRET_KEY ? "configured" : "missing_key",
   });
 });
 
-// ---- Public: list products (hide priceId) ----
-router.get("/products", (_req: Request, res: Response) => {
-  const items = PRODUCTS.filter(p => p.active).map(p => ({
-    id: p.id,
-    name: p.name,
-    description: p.description,
-    price: p.price,
-    currency: p.currency,
-    image: p.image,
-    stock: p.stock ?? null,
-  }));
+// ---- Public: list products (hide priceId). If image is missing, try Stripe. ----
+router.get("/products", async (_req: Request, res: Response) => {
+  const s = await getStripe(); // may be null
+  const items = await Promise.all(
+    PRODUCTS.filter(p => p.active).map(async (p) => {
+      let image = p.image || "";
+      if (!image && s && p.priceId) {
+        try {
+          const price = await s.prices.retrieve(p.priceId);
+          const prodId = typeof price.product === "string" ? price.product : price.product?.id;
+          if (prodId) {
+            const sp = await s.products.retrieve(prodId);
+            if (Array.isArray(sp.images) && sp.images[0]) image = sp.images[0];
+          }
+        } catch {
+          // ignore; fail-safe to empty image
+        }
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        price: p.price,
+        currency: p.currency,
+        image,
+        stock: p.stock ?? null,
+      };
+    })
+  );
   res.json({ ok: true, products: items });
 });
 
@@ -91,8 +115,8 @@ router.get("/products", (_req: Request, res: Response) => {
 // body: { items: [{ id: string, quantity: number }, ...] }
 router.post("/checkout", express.json(), async (req: Request, res: Response) => {
   try {
-    const stripe = await getStripe();
-    if (!stripe) return res.status(500).json({ ok: false, error: "stripe_not_configured" });
+    const s = await getStripe();
+    if (!s) return res.status(500).json({ ok: false, error: "stripe_not_configured" });
 
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     if (!items.length) return res.status(400).json({ ok: false, error: "empty_cart" });
@@ -107,7 +131,7 @@ router.post("/checkout", express.json(), async (req: Request, res: Response) => 
       line_items.push({ price: product.priceId, quantity: qty });
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await s.checkout.sessions.create({
       mode: "payment",
       success_url: STRIPE_SUCCESS_URL,
       cancel_url: STRIPE_CANCEL_URL,
@@ -124,9 +148,9 @@ router.post("/checkout", express.json(), async (req: Request, res: Response) => 
   }
 });
 
-// ---- Admin guard (optional X-Access-Token) ----
+// ---- Admin guard (optional X-Access-Token; API itself is Basic-Auth gated) ----
 function requireAdmin(req: Request) {
-  if (!ADMIN_TOKEN) return; // if not set, skip (already behind Basic Auth at /api/*)
+  if (!ADMIN_TOKEN) return; // skip if not configured
   const t = (req.header("x-access-token") || "").trim();
   if (t !== ADMIN_TOKEN) {
     const e: any = new Error("unauthorized");
@@ -135,15 +159,14 @@ function requireAdmin(req: Request) {
   }
 }
 
-// ---- Admin: upsert product, auto-create Stripe Product/Price if missing ----
-// Accepts either:
-//   A) Provide existing Stripe priceId
-//      { id, name, description, price, currency, image, priceId, active, stock? }
-//   B) Ask us to create Stripe product/price:
-//      { id, name, description, price, currency, image, active, stock?,
-//        stripe: { productId? , images?: string[], metadata?: Record<string,string> } }
-//      - If stripe.productId omitted, we create Product.
-//      - We always create a Price from provided `price` (cents) & `currency` and attach to product.
+// ---- Admin: upsert product. Either provide an existing priceId,
+//      or ask us to create a Product/Price in Stripe automatically. ----
+// Body variants:
+// A) With existing priceId:
+//    { id, name, description, price, currency, image, priceId, active, stock? }
+// B) Auto-create in Stripe (if priceId omitted):
+//    { id, name, description, price, currency, image, active, stock?,
+//      stripe: { productId?, images?: string[], metadata?: Record<string,string> } }
 router.post("/admin/products", express.json(), async (req: Request, res: Response) => {
   try {
     requireAdmin(req);
@@ -157,8 +180,8 @@ router.post("/admin/products", express.json(), async (req: Request, res: Respons
       image,
       active = true,
       stock = null,
-      priceId,       // if present, we won't create a new Stripe Price
-      stripe: stripeOpts = {},
+      priceId,
+      stripe: sopts = {},
     } = (req.body || {}) as any;
 
     if (!id || !name || !description || !image) {
@@ -169,24 +192,23 @@ router.post("/admin/products", express.json(), async (req: Request, res: Respons
     }
 
     let finalPriceId = String(priceId || "");
-    // If no priceId provided, create in Stripe
+
     if (!finalPriceId) {
       const s = await getStripe();
       if (!s) return res.status(500).json({ ok: false, error: "stripe_not_configured" });
 
-      // Ensure a Stripe Product exists (use provided productId or create one)
-      let productId = String(stripeOpts.productId || "");
+      // Use provided productId or create one
+      let productId = String(sopts.productId || "");
       if (!productId) {
         const createdProduct = await s.products.create({
           name,
           description,
-          images: stripeOpts.images?.length ? stripeOpts.images : [image],
-          metadata: stripeOpts.metadata || {},
+          images: Array.isArray(sopts.images) && sopts.images.length ? sopts.images : [image],
+          metadata: sopts.metadata || {},
         });
         productId = createdProduct.id;
       }
 
-      // Create a Price tied to that product
       const createdPrice = await s.prices.create({
         unit_amount: price,
         currency,
@@ -195,11 +217,14 @@ router.post("/admin/products", express.json(), async (req: Request, res: Respons
       finalPriceId = createdPrice.id;
     }
 
-    // Upsert into our in-memory catalog
+    // Upsert into in-memory catalog
     const idx = PRODUCTS.findIndex(p => p.id === id);
     const record: Product = {
-      id, name, description,
-      price, currency,
+      id,
+      name,
+      description,
+      price,
+      currency,
       image,
       priceId: finalPriceId,
       active: !!active,
@@ -208,7 +233,7 @@ router.post("/admin/products", express.json(), async (req: Request, res: Respons
     if (idx >= 0) PRODUCTS[idx] = record;
     else PRODUCTS.push(record);
 
-    return res.status(200).json({ ok: true, product: record });
+    res.status(200).json({ ok: true, product: record });
   } catch (err: any) {
     const status = err?.status || 500;
     console.error("[store/admin/products] error:", err?.message || err);
@@ -216,7 +241,7 @@ router.post("/admin/products", express.json(), async (req: Request, res: Respons
   }
 });
 
-// ---- Admin: list raw catalog (to verify upserts) ----
+// ---- Admin: list raw catalog (verify what’s loaded) ----
 router.get("/admin/products", (req: Request, res: Response) => {
   try {
     requireAdmin(req);
