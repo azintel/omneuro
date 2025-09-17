@@ -6,12 +6,13 @@ import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
 import blogRouter from "./routes/blog.js";
-import storeRouter from "./routes/store.js"; // <— add
+import storeRouter from "./routes/store.js"; // <-- ensure store is mounted
 import authRouter from "./auth.js";
 import cors from "cors";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,18 +27,15 @@ const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
 // Paths under /api/* that remain public (exact matches)
 const API_PUBLIC_PATHS = new Set<string>([
-  "/health",
-  "/tech/health",
-  "/garage/health",
-  "/scheduler/health",
+  "/health",               // /api/health
+  "/tech/health",          // /api/tech/health
+  "/garage/health",        // /api/garage/health
+  "/scheduler/health",     // /api/scheduler/health
+  "/store/health",         // /api/store/health  <-- added
 
-  // public garage magic link endpoints
+  // allow public magic-link endpoints for clients
   "/garage/auth/request",
   "/garage/auth/verify",
-
-  // public store endpoints
-  "/store/products",
-  "/store/checkout",
 ]);
 
 function requireBasicAuthForApi(
@@ -84,7 +82,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
 
 // -----------------------------
-// Static website (homepage + garage UI)
+// Static website (homepage + garage UI + store)
 // -----------------------------
 app.use("/", express.static(path.join(__dirname, "public"), { fallthrough: true }));
 
@@ -103,12 +101,17 @@ app.use("/api/garage", garageRouter);
 app.use("/api/garage/quotes", quotesRouter);
 app.use("/api/scheduler", schedulerRouter);
 app.use("/api/blog", blogRouter);
-app.use("/api/store", storeRouter); // <— add
+app.use("/api", chatRouter);          // ensures /api/chat works
+app.use("/api/store", storeRouter);   // <-- store routes
 
+// -----------------------------
 // 404 for API
+// -----------------------------
 app.use("/api", (_req, res) => res.status(404).json({ ok: false, error: "not_found" }));
 
+// -----------------------------
 // Server
+// -----------------------------
 const PORT = Number(process.env.PORT || 8080);
 app.listen(PORT, () => {
   console.log(`[tech-gateway] listening on :${PORT}`);

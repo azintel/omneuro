@@ -27,7 +27,7 @@ type Product = {
   id: string;
   name: string;
   description: string;
-  price: number; // in smallest currency unit display only (e.g., 3499 => $34.99), purely informational
+  price: number; // display-only (cents)
   currency: "usd";
   image: string; // public URL under /store/images/...
   priceId: string; // Stripe Price ID (for checkout)
@@ -67,6 +67,17 @@ const PRODUCTS: Product[] = [
   },
 ];
 
+// --- Health (PUBLIC) ---
+router.get("/health", (_req: Request, res: Response) => {
+  res.json({
+    ok: true,
+    service: "store",
+    stripeConfigured: Boolean(STRIPE_SECRET_KEY),
+    successUrl: STRIPE_SUCCESS_URL,
+    cancelUrl: STRIPE_CANCEL_URL,
+  });
+});
+
 // Public: list products (no priceId leakage)
 router.get("/products", (_req: Request, res: Response) => {
   const items = PRODUCTS.filter(p => p.active).map(p => ({
@@ -94,7 +105,7 @@ router.post("/checkout", express.json(), async (req: Request, res: Response) => 
     }
 
     // Validate & map to Stripe line_items
-    const line_items = [];
+    const line_items: Array<{ price: string; quantity: number }> = [];
     for (const it of items) {
       const qty = Math.max(1, Number(it?.quantity || 0));
       const product = PRODUCTS.find(p => p.id === String(it?.id) && p.active);
@@ -112,7 +123,6 @@ router.post("/checkout", express.json(), async (req: Request, res: Response) => 
       billing_address_collection: "auto",
       shipping_address_collection: { allowed_countries: ["US", "CA"] },
       allow_promotion_codes: true,
-      // you can add metadata here if needed
     });
 
     return res.status(200).json({ ok: true, sessionId: session.id, url: session.url });
