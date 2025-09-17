@@ -1,4 +1,4 @@
-#////scripts/04-redeploy.sh
+# ////scripts/04-redeploy.sh
 #!/bin/bash
 set -euo pipefail
 
@@ -22,12 +22,12 @@ getp() {
 }
 
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
-# Core IDs (Sheets/Calendar/Scheduler)
+# Google/Sheets/Calendar
 export SHEETS_SPREADSHEET_ID="$(getp "/omneuro/google/sheets_spreadsheet_id")"
 export GOOGLE_CALENDAR_ID="$(getp "/omneuro/google/calendar_id")"
 export SCHED_SPREADSHEET_ID="$(getp "/omneuro/google/scheduler_spreadsheet_id")"
 
-# API/Auth
+# Tech gateway auth (basic + chat access token)
 export BASIC_AUTH_USER="$(getp "/omneuro/tech-gateway/BASIC_AUTH_USER")"
 export BASIC_AUTH_PASS="$(getp "/omneuro/tech-gateway/BASIC_AUTH_PASS")"
 export TECH_GATEWAY_ACCESS_TOKEN="$(getp "/omneuro/tech-gateway/TECH_GATEWAY_ACCESS_TOKEN")"
@@ -40,21 +40,31 @@ export BLOG_PREFIX="$(getp "/omneuro/blog/prefix")"
 export BLOG_AWS_REGION="$(getp "/omneuro/blog/aws_region")"
 export BLOG_SITEMAP_KEY="$(getp "/omneuro/blog/sitemap_key")"
 
-# Public URLs / Integrations
+# Tech portal base + Google Places
 export PUBLIC_TECH_BASE_URL="$(getp "/omneuro/tech-gateway/public_base_url")"
 export GOOGLE_PLACES_API_KEY="$(getp "/omneuro/tech-gateway/GOOGLE_PLACES_API_KEY")"
 
-# Normalize empty/None
-[[ -z "${BLOG_SITEMAP_KEY:-}" || "${BLOG_SITEMAP_KEY}" == "None" ]] && BLOG_SITEMAP_KEY="blog/sitemap.xml"
-[[ -z "${BLOG_AWS_REGION:-}" || "${BLOG_AWS_REGION}" == "None" ]] && BLOG_AWS_REGION="$AWS_REGION"
+# Store (Stripe)
+export STRIPE_SECRET_KEY="$(getp "/omneuro/store/stripe_secret_key")"
+export STORE_SUCCESS_URL="$(getp "/omneuro/store/success_url")"
+export STORE_CANCEL_URL="$(getp "/omneuro/store/cancel_url")"
 
-mask(){ sed -E 's/(.{4}).+(.{4})/\1…\2/'; }
-printf "[SSM] SHEETS_SPREADSHEET_ID=%s\n" "$(printf '%s' "${SHEETS_SPREADSHEET_ID:-<none>}" | mask)"
-printf "[SSM] GOOGLE_CALENDAR_ID=%s\n"     "$(printf '%s' "${GOOGLE_CALENDAR_ID:-<none>}" | mask)"
-printf "[SSM] SCHED_SPREADSHEET_ID=%s\n"   "$(printf '%s' "${SCHED_SPREADSHEET_ID:-<none>}" | mask)"
+# Defaults / cleanup
+[[ -z "${BLOG_SITEMAP_KEY:-}"      || "${BLOG_SITEMAP_KEY}" == "None" ]] && BLOG_SITEMAP_KEY="blog/sitemap.xml"
+[[ -z "${BLOG_AWS_REGION:-}"       || "${BLOG_AWS_REGION}"  == "None" ]] && BLOG_AWS_REGION="$AWS_REGION"
+[[ -z "${PUBLIC_BLOG_BASE_URL:-}"  || "${PUBLIC_BLOG_BASE_URL}" == "None" ]] && PUBLIC_BLOG_BASE_URL="${BLOG_BASE_URL:-}"
+[[ -z "${PUBLIC_TECH_BASE_URL:-}"  || "${PUBLIC_TECH_BASE_URL}" == "None" ]] && PUBLIC_TECH_BASE_URL="https://tech.juicejunkiez.com"
+
+# SSM summary (mask sensitive)
+mask_mid() { printf '%s' "$1" | sed -E 's/^(.{4}).+(.{4})$/\1…\2/'; }
+mask_key() { [ -n "$1" ] && echo "$(mask_mid "$1")" || echo "<none>"; }
+
+printf "[SSM] SHEETS_SPREADSHEET_ID=%s\n" "$(mask_mid "${SHEETS_SPREADSHEET_ID:-<none>}")"
+printf "[SSM] GOOGLE_CALENDAR_ID=%s\n"     "$(mask_mid "${GOOGLE_CALENDAR_ID:-<none>}")"
+printf "[SSM] SCHED_SPREADSHEET_ID=%s\n"   "$(mask_mid "${SCHED_SPREADSHEET_ID:-<none>}")"
 echo   "[SSM] BASIC_AUTH_USER=${BASIC_AUTH_USER:-<none>}"
-echo   "[SSM] BASIC_AUTH_PASS=$( [[ -n "${BASIC_AUTH_PASS:-}" ]] && echo '********' || echo '<none>' )"
-echo   "[SSM] TECH_GATEWAY_ACCESS_TOKEN=$( [[ -n "${TECH_GATEWAY_ACCESS_TOKEN:-}" ]] && echo "$(printf '%s' "$TECH_GATEWAY_ACCESS_TOKEN" | mask)" || echo '<none>' )"
+echo   "[SSM] BASIC_AUTH_PASS=$(mask_key "${BASIC_AUTH_PASS:-}")"
+echo   "[SSM] TECH_GATEWAY_ACCESS_TOKEN=$(mask_key "${TECH_GATEWAY_ACCESS_TOKEN:-}")"
 echo   "[SSM] BLOG_S3_BUCKET=${BLOG_S3_BUCKET:-<none>}"
 echo   "[SSM] BLOG_BASE_URL=${BLOG_BASE_URL:-<none>}"
 echo   "[SSM] PUBLIC_BLOG_BASE_URL=${PUBLIC_BLOG_BASE_URL:-<none>}"
@@ -62,12 +72,16 @@ echo   "[SSM] BLOG_PREFIX=${BLOG_PREFIX:-<none>}"
 echo   "[SSM] BLOG_AWS_REGION=${BLOG_AWS_REGION:-<none>}"
 echo   "[SSM] BLOG_SITEMAP_KEY=${BLOG_SITEMAP_KEY:-<none>}"
 echo   "[SSM] PUBLIC_TECH_BASE_URL=${PUBLIC_TECH_BASE_URL:-<none>}"
-echo   "[SSM] GOOGLE_PLACES_API_KEY=$( [[ -n "${GOOGLE_PLACES_API_KEY:-}" ]] && echo "$(printf '%s' "$GOOGLE_PLACES_API_KEY" | mask)" || echo '<none>' )"
+echo   "[SSM] GOOGLE_PLACES_API_KEY=$(mask_key "${GOOGLE_PLACES_API_KEY:-}")"
+echo   "[SSM] STRIPE_SECRET_KEY=$(mask_key "${STRIPE_SECRET_KEY:-}")"
+echo   "[SSM] STORE_SUCCESS_URL=${STORE_SUCCESS_URL:-<none>}"
+echo   "[SSM] STORE_CANCEL_URL=${STORE_CANCEL_URL:-<none>}"
 
 echo "=== [REDEPLOY] Building apps (npm ci + build) ==="
 set -x
 time npm --prefix apps/brain-api ci
 time npm --prefix apps/brain-api run build | tee /home/ubuntu/build-logs/brain-api-tsc.log
+
 time npm --prefix apps/tech-gateway ci
 time npm --prefix apps/tech-gateway run build | tee /home/ubuntu/build-logs/tech-gateway-tsc.log
 set +x
@@ -77,9 +91,9 @@ ls -1 apps/tech-gateway/dist/{db,routes,server}.js 2>/dev/null || true
 ls -1 apps/brain-api/dist/server.js 2>/dev/null || true
 
 echo "=== [REDEPLOY] Restart PM2 (with env) ==="
-SHEETS_SPREADSHEET_ID="$SHEETS_SPREADSHEET_ID" \
-GOOGLE_CALENDAR_ID="$GOOGLE_CALENDAR_ID" \
-SCHED_SPREADSHEET_ID="$SCHED_SPREADSHEET_ID" \
+SHEETS_SPREADSHEET_ID="${SHEETS_SPREADSHEET_ID:-}" \
+GOOGLE_CALENDAR_ID="${GOOGLE_CALENDAR_ID:-}" \
+SCHED_SPREADSHEET_ID="${SCHED_SPREADSHEET_ID:-}" \
 BASIC_AUTH_USER="${BASIC_AUTH_USER:-}" \
 BASIC_AUTH_PASS="${BASIC_AUTH_PASS:-}" \
 TECH_GATEWAY_ACCESS_TOKEN="${TECH_GATEWAY_ACCESS_TOKEN:-}" \
@@ -91,6 +105,9 @@ BLOG_AWS_REGION="${BLOG_AWS_REGION:-$AWS_REGION}" \
 BLOG_SITEMAP_KEY="${BLOG_SITEMAP_KEY:-blog/sitemap.xml}" \
 PUBLIC_TECH_BASE_URL="${PUBLIC_TECH_BASE_URL:-https://tech.juicejunkiez.com}" \
 GOOGLE_PLACES_API_KEY="${GOOGLE_PLACES_API_KEY:-}" \
+STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}" \
+STORE_SUCCESS_URL="${STORE_SUCCESS_URL:-https://juicejunkiez.com/store/?status=success}" \
+STORE_CANCEL_URL="${STORE_CANCEL_URL:-https://juicejunkiez.com/store/?status=cancel}" \
 pm2 startOrReload ecosystem.config.cjs --only tech-gateway --update-env
 
 pm2 startOrReload ecosystem.config.cjs --only brain-api --update-env
@@ -99,16 +116,14 @@ pm2 save
 echo "=== [REDEPLOY] PM2 env check (tech-gateway) ==="
 pm2 jlist | node -e '
 const a=JSON.parse(require("fs").readFileSync(0,"utf8"));
-const p=a.find(x=>x.name==="tech-gateway")||{};
-const e=p.pm2_env?.env||{};
-function mask(s){return (s||"").replace(/^(.{4}).+(.{4})$/,"$1…$2")}
+const e=(a.find(x=>x.name==="tech-gateway")||{}).pm2_env?.env||{};
+const mask=v=>!v?"<unset>":(v.length>8?(v.slice(0,4)+"…"+v.slice(-4)):"<set>");
 console.log({
-  SHEETS_SPREADSHEET_ID: e.SHEETS_SPREADSHEET_ID||"<unset>",
-  GOOGLE_CALENDAR_ID: e.GOOGLE_CALENDAR_ID||"<unset>",
-  SCHED_SPREADSHEET_ID: e.SCHED_SPREADSHEET_ID||"<unset>",
+  SHEETS_SPREADSHEET_ID: mask(e.SHEETS_SPREADSHEET_ID),
+  GOOGLE_CALENDAR_ID: mask(e.GOOGLE_CALENDAR_ID),
+  SCHED_SPREADSHEET_ID: mask(e.SCHED_SPREADSHEET_ID),
   BASIC_AUTH_USER: e.BASIC_AUTH_USER||"<unset>",
-  BASIC_AUTH_PASS: e.BASIC_AUTH_PASS?"********":"<unset>",
-  TECH_GATEWAY_ACCESS_TOKEN: e.TECH_GATEWAY_ACCESS_TOKEN?mask(e.TECH_GATEWAY_ACCESS_TOKEN):"<unset>",
+  TECH_GATEWAY_ACCESS_TOKEN: mask(e.TECH_GATEWAY_ACCESS_TOKEN),
   BLOG_S3_BUCKET: e.BLOG_S3_BUCKET||"<unset>",
   BLOG_BASE_URL: e.BLOG_BASE_URL||"<unset>",
   PUBLIC_BLOG_BASE_URL: e.PUBLIC_BLOG_BASE_URL||"<unset>",
@@ -116,9 +131,11 @@ console.log({
   BLOG_AWS_REGION: e.BLOG_AWS_REGION||"<unset>",
   BLOG_SITEMAP_KEY: e.BLOG_SITEMAP_KEY||"<unset>",
   PUBLIC_TECH_BASE_URL: e.PUBLIC_TECH_BASE_URL||"<unset>",
-  GOOGLE_PLACES_API_KEY: e.GOOGLE_PLACES_API_KEY?mask(e.GOOGLE_PLACES_API_KEY):"<unset>",
-});
-'
+  GOOGLE_PLACES_API_KEY: mask(e.GOOGLE_PLACES_API_KEY),
+  STRIPE_SECRET_KEY: mask(e.STRIPE_SECRET_KEY),
+  STORE_SUCCESS_URL: e.STORE_SUCCESS_URL||"<unset>",
+  STORE_CANCEL_URL: e.STORE_CANCEL_URL||"<unset>",
+});'
 
 echo "=== [REDEPLOY] Publish homepage ==="
 sudo mkdir -p /var/www/juicejunkiez.com
@@ -141,6 +158,7 @@ until curl -fsS http://127.0.0.1:8092/healthz >/dev/null 2>&1; do
   ((tries--)) || { echo "[ERR] tech-gateway /healthz never came up"; break; }
   echo "[..] waiting on /healthz ($((40-tries))/40)"; sleep 1
 done
+
 curl -fsS http://127.0.0.1:8092/healthz >/dev/null && echo "[OK] /healthz" || echo "[ERR] /healthz"
 curl -fsS http://127.0.0.1:8092/api/health >/dev/null && echo "[OK] /api/health" || echo "[ERR] /api/health"
 echo "[garage] $(curl -i -s http://127.0.0.1:8092/api/garage/health | head -n 1 || true)"
