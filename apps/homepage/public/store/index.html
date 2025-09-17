@@ -1,0 +1,41 @@
+<!-- ////apps/homepage/public/store/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Juice Junkiez • Store</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/store/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">Juice Junkiez</a>
+    <nav>
+      <a href="/store/">Store</a>
+      <a href="/blog/">Blog</a>
+      <a href="/#contact">Contact</a>
+    </nav>
+    <button id="cartBtn" class="cart-btn">Cart (<span id="cartCount">0</span>)</button>
+  </header>
+
+  <main class="container">
+    <h1>3D Printed Parts</h1>
+    <div id="products" class="grid"></div>
+  </main>
+
+  <aside id="cart" class="cart-panel hidden">
+    <div class="cart-head">
+      <h3>Your Cart</h3>
+      <button id="closeCart" aria-label="Close">×</button>
+    </div>
+    <div id="cartItems" class="cart-items"></div>
+    <div class="cart-foot">
+      <div class="cart-total">Total: <span id="cartTotal">$0.00</span></div>
+      <button id="checkout" class="checkout-btn">Checkout</button>
+      <div id="cartMsg" class="cart-msg"></div>
+    </div>
+  </aside>
+
+  <script src="/store/app.js" defer></script>
+</body>
+</html>

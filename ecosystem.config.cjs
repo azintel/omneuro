@@ -37,7 +37,7 @@ module.exports = {
         // Scheduler TZ
         SCHED_TZ: process.env.SCHED_TZ || 'America/New_York',
 
-        // Blog (must be present in PM2 env for app to see them)
+        // Blog
         BLOG_S3_BUCKET:  process.env.BLOG_S3_BUCKET  || '',
         BLOG_BASE_URL:   process.env.BLOG_BASE_URL   || '',
         PUBLIC_BLOG_BASE_URL: process.env.PUBLIC_BLOG_BASE_URL || (process.env.BLOG_BASE_URL || ''),

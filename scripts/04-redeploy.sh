@@ -21,15 +21,36 @@ getp() {
     --query "Parameter.Value" --output text 2>/dev/null || true
 }
 
-mask_mid() { printf '%s' "$1" | sed -E 's/(.{4}).+(.{4})/\1…\2/'; }
+# --- Helper: mask values for logs ---
+mask() {
+  local v="$1"
+  if [ -z "$v" ] || [ "$v" = "<none>" ] || [ "$v" = "None" ]; then
+    echo "<none>"
+  else
+    # keep first/last 4
+    local a="${v:0:4}"
+    local b="${v: -4}"
+    echo "${a}…${b}"
+  fi
+}
+
+# --- Helper: coalesce "None" to empty ---
+coalesce() {
+  local v="${1:-}"
+  if [ -z "$v" ] || [ "$v" = "None" ] || [ "$v" = "<none>" ]; then
+    echo ""
+  else
+    echo "$v"
+  fi
+}
 
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
-# Google / Sheets / Calendar
+# Google / sheets / scheduler
 export SHEETS_SPREADSHEET_ID="$(getp "/omneuro/google/sheets_spreadsheet_id")"
 export GOOGLE_CALENDAR_ID="$(getp "/omneuro/google/calendar_id")"
 export SCHED_SPREADSHEET_ID="$(getp "/omneuro/google/scheduler_spreadsheet_id")"
 
-# Portal auth + access token
+# Auth for /api/*
 export BASIC_AUTH_USER="$(getp "/omneuro/tech-gateway/BASIC_AUTH_USER")"
 export BASIC_AUTH_PASS="$(getp "/omneuro/tech-gateway/BASIC_AUTH_PASS")"
 export TECH_GATEWAY_ACCESS_TOKEN="$(getp "/omneuro/tech-gateway/access_token")"
@@ -42,31 +63,32 @@ export BLOG_PREFIX="$(getp "/omneuro/blog/prefix")"
 export BLOG_AWS_REGION="$(getp "/omneuro/blog/aws_region")"
 export BLOG_SITEMAP_KEY="$(getp "/omneuro/blog/sitemap_key")"
 
-# Tech public base
+# Optional misc
 export PUBLIC_TECH_BASE_URL="$(getp "/omneuro/tech-gateway/public_base_url")"
+export GOOGLE_PLACES_API_KEY="$(getp "/omneuro/tech-gateway/google_places_api_key")"
 
-# Google Places (future use)
-export GOOGLE_PLACES_API_KEY="$(getp "/omneuro/tech-gateway/GOOGLE_PLACES_API_KEY")"
-
-# Store (Stripe + URLs)
-# NOTE: secret lives at /omneuro/store/stripe_secret (not *_key). We export as STRIPE_SECRET_KEY for app code.
+# Store / Stripe
+# NOTE: we use /omneuro/store/stripe_secret (not .../stripe_secret_key)
 export STRIPE_SECRET_KEY="$(getp "/omneuro/store/stripe_secret")"
 export STORE_SUCCESS_URL="$(getp "/omneuro/store/success_url")"
 export STORE_CANCEL_URL="$(getp "/omneuro/store/cancel_url")"
 
-# Defaults/fallbacks
-[[ -z "${BLOG_SITEMAP_KEY:-}"     || "${BLOG_SITEMAP_KEY}" == "None" ]] && BLOG_SITEMAP_KEY="blog/sitemap.xml"
-[[ -z "${BLOG_AWS_REGION:-}"      || "${BLOG_AWS_REGION}"  == "None" ]] && BLOG_AWS_REGION="$AWS_REGION"
-[[ -z "${STORE_SUCCESS_URL:-}"    || "${STORE_SUCCESS_URL}"== "None" ]] && STORE_SUCCESS_URL="https://juicejunkiez.com/store/success.html"
-[[ -z "${STORE_CANCEL_URL:-}"     || "${STORE_CANCEL_URL}" == "None" ]] && STORE_CANCEL_URL="https://juicejunkiez.com/store/cancel.html"
+# Coalesce "None" / empties and set sane defaults
+BLOG_SITEMAP_KEY="$(coalesce "${BLOG_SITEMAP_KEY-}")"; [ -n "$BLOG_SITEMAP_KEY" ] || BLOG_SITEMAP_KEY="blog/sitemap.xml"
+BLOG_AWS_REGION="$(coalesce "${BLOG_AWS_REGION-}")"; [ -n "$BLOG_AWS_REGION" ] || BLOG_AWS_REGION="$AWS_REGION"
+PUBLIC_BLOG_BASE_URL="$(coalesce "${PUBLIC_BLOG_BASE_URL-}")"
+PUBLIC_TECH_BASE_URL="$(coalesce "${PUBLIC_TECH_BASE_URL-}")"
+GOOGLE_PLACES_API_KEY="$(coalesce "${GOOGLE_PLACES_API_KEY-}")"
+STRIPE_SECRET_KEY="$(coalesce "${STRIPE_SECRET_KEY-}")"
+STORE_SUCCESS_URL="$(coalesce "${STORE_SUCCESS_URL-}")"; [ -n "$STORE_SUCCESS_URL" ] || STORE_SUCCESS_URL="https://juicejunkiez.com/store/success.html"
+STORE_CANCEL_URL="$(coalesce "${STORE_CANCEL_URL-}")";  [ -n "$STORE_CANCEL_URL" ]  || STORE_CANCEL_URL="https://juicejunkiez.com/store/cancel.html"
 
-# Echo what we fetched (masked where appropriate)
-printf "[SSM] SHEETS_SPREADSHEET_ID=%s\n" "$(mask_mid "${SHEETS_SPREADSHEET_ID:-<none>}")"
-printf "[SSM] GOOGLE_CALENDAR_ID=%s\n"     "$(mask_mid "${GOOGLE_CALENDAR_ID:-<none>}")"
-printf "[SSM] SCHED_SPREADSHEET_ID=%s\n"   "$(mask_mid "${SCHED_SPREADSHEET_ID:-<none>}")"
+echo   "[SSM] SHEETS_SPREADSHEET_ID=$(mask "${SHEETS_SPREADSHEET_ID:-<none>}")"
+echo   "[SSM] GOOGLE_CALENDAR_ID=$(mask "${GOOGLE_CALENDAR_ID:-<none>}")"
+echo   "[SSM] SCHED_SPREADSHEET_ID=$(mask "${SCHED_SPREADSHEET_ID:-<none>}")"
 echo   "[SSM] BASIC_AUTH_USER=${BASIC_AUTH_USER:-<none>}"
-printf "[SSM] BASIC_AUTH_PASS=%s\n"        "$( [ -n "${BASIC_AUTH_PASS:-}" ] && echo '********' || echo '<none>' )"
-printf "[SSM] TECH_GATEWAY_ACCESS_TOKEN=%s\n" "$(mask_mid "${TECH_GATEWAY_ACCESS_TOKEN:-<none>}")"
+echo   "[SSM] BASIC_AUTH_PASS=$(mask "${BASIC_AUTH_PASS:-<none>}")"
+echo   "[SSM] TECH_GATEWAY_ACCESS_TOKEN=$(mask "${TECH_GATEWAY_ACCESS_TOKEN:-<none>}")"
 echo   "[SSM] BLOG_S3_BUCKET=${BLOG_S3_BUCKET:-<none>}"
 echo   "[SSM] BLOG_BASE_URL=${BLOG_BASE_URL:-<none>}"
 echo   "[SSM] PUBLIC_BLOG_BASE_URL=${PUBLIC_BLOG_BASE_URL:-<none>}"
@@ -74,8 +96,8 @@ echo   "[SSM] BLOG_PREFIX=${BLOG_PREFIX:-<none>}"
 echo   "[SSM] BLOG_AWS_REGION=${BLOG_AWS_REGION:-<none>}"
 echo   "[SSM] BLOG_SITEMAP_KEY=${BLOG_SITEMAP_KEY:-<none>}"
 echo   "[SSM] PUBLIC_TECH_BASE_URL=${PUBLIC_TECH_BASE_URL:-<none>}"
-printf "[SSM] GOOGLE_PLACES_API_KEY=%s\n"  "$(mask_mid "${GOOGLE_PLACES_API_KEY:-<none>}")"
-printf "[SSM] STRIPE_SECRET_KEY=%s\n"      "$(mask_mid "${STRIPE_SECRET_KEY:-<none>}")"
+echo   "[SSM] GOOGLE_PLACES_API_KEY=$(mask "${GOOGLE_PLACES_API_KEY:-<none>}")"
+echo   "[SSM] STRIPE_SECRET_KEY=$(mask "${STRIPE_SECRET_KEY:-<none>}")"
 echo   "[SSM] STORE_SUCCESS_URL=${STORE_SUCCESS_URL:-<none>}"
 echo   "[SSM] STORE_CANCEL_URL=${STORE_CANCEL_URL:-<none>}"
 
@@ -120,28 +142,29 @@ pm2 jlist | node -e '
 const a=JSON.parse(require("fs").readFileSync(0,"utf8"));
 const p=a.find(x=>x.name==="tech-gateway")||{};
 const e=p.pm2_env?.env||{};
-const mask=(v)=>!v?"<unset>":(v.length>8?(v.slice(0,4)+"…"+v.slice(-4)):v);
+function mask(s){ if(!s||s=="<unset>") return "<unset>"; return (s+"").slice(0,4)+"…"+(s+"").slice(-4); }
 console.log({
-  SHEETS_SPREADSHEET_ID: mask(e.SHEETS_SPREADSHEET_ID),
-  GOOGLE_CALENDAR_ID:    mask(e.GOOGLE_CALENDAR_ID),
-  SCHED_SPREADSHEET_ID:  mask(e.SCHED_SPREADSHEET_ID),
-  BASIC_AUTH_USER:       e.BASIC_AUTH_USER||"<unset>",
-  TECH_GATEWAY_ACCESS_TOKEN: mask(e.TECH_GATEWAY_ACCESS_TOKEN),
-  BLOG_S3_BUCKET:        e.BLOG_S3_BUCKET||"<unset>",
-  BLOG_BASE_URL:         e.BLOG_BASE_URL||"<unset>",
-  PUBLIC_BLOG_BASE_URL:  e.PUBLIC_BLOG_BASE_URL||"<unset>",
-  BLOG_PREFIX:           e.BLOG_PREFIX||"<unset>",
-  BLOG_AWS_REGION:       e.BLOG_AWS_REGION||"<unset>",
-  BLOG_SITEMAP_KEY:      e.BLOG_SITEMAP_KEY||"<unset>",
-  PUBLIC_TECH_BASE_URL:  e.PUBLIC_TECH_BASE_URL||"<unset>",
-  GOOGLE_PLACES_API_KEY: mask(e.GOOGLE_PLACES_API_KEY),
-  STRIPE_SECRET_KEY:     mask(e.STRIPE_SECRET_KEY),
-  STORE_SUCCESS_URL:     e.STORE_SUCCESS_URL||"<unset>",
-  STORE_CANCEL_URL:      e.STORE_CANCEL_URL||"<unset>",
+  SHEETS_SPREADSHEET_ID: e.SHEETS_SPREADSHEET_ID||"<unset>",
+  GOOGLE_CALENDAR_ID: e.GOOGLE_CALENDAR_ID||"<unset>",
+  SCHED_SPREADSHEET_ID: e.SCHED_SPREADSHEET_ID||"<unset>",
+  BASIC_AUTH_USER: e.BASIC_AUTH_USER||"<unset>",
+  BASIC_AUTH_PASS: mask(e.BASIC_AUTH_PASS||"<unset>"),
+  TECH_GATEWAY_ACCESS_TOKEN: mask(e.TECH_GATEWAY_ACCESS_TOKEN||"<unset>"),
+  BLOG_S3_BUCKET: e.BLOG_S3_BUCKET||"<unset>",
+  BLOG_BASE_URL: e.BLOG_BASE_URL||"<unset>",
+  PUBLIC_BLOG_BASE_URL: e.PUBLIC_BLOG_BASE_URL||"<unset>",
+  BLOG_PREFIX: e.BLOG_PREFIX||"<unset>",
+  BLOG_AWS_REGION: e.BLOG_AWS_REGION||"<unset>",
+  BLOG_SITEMAP_KEY: e.BLOG_SITEMAP_KEY||"<unset>",
+  PUBLIC_TECH_BASE_URL: e.PUBLIC_TECH_BASE_URL||"<unset>",
+  GOOGLE_PLACES_API_KEY: mask(e.GOOGLE_PLACES_API_KEY||"<unset>"),
+  STRIPE_SECRET_KEY: mask(e.STRIPE_SECRET_KEY||"<unset>"),
+  STORE_SUCCESS_URL: e.STORE_SUCCESS_URL||"<unset>",
+  STORE_CANCEL_URL: e.STORE_CANCEL_URL||"<unset>",
 });
 '
 
-echo "=== [REDEPLOY] Publish homepage (incl. /store) ==="
+echo "=== [REDEPLOY] Publish homepage (includes /store) ==="
 sudo mkdir -p /var/www/juicejunkiez.com
 sudo rsync -av --delete apps/homepage/public/ /var/www/juicejunkiez.com/
 
@@ -165,13 +188,15 @@ done
 curl -fsS http://127.0.0.1:8092/healthz >/dev/null && echo "[OK] /healthz" || echo "[ERR] /healthz"
 curl -fsS http://127.0.0.1:8092/api/health >/dev/null && echo "[OK] /api/health" || echo "[ERR] /api/health"
 echo "[garage] $(curl -i -s http://127.0.0.1:8092/api/garage/health | head -n 1 || true)"
+curl -fsS http://127.0.0.1:8092/api/store/health >/dev/null && echo "[OK] /api/store/health" || echo "[ERR] /api/store/health"
 
-echo "=== [REDEPLOY] Public health ==="
 wait200() { local url="$1"; local tries="${2:-20}"; local delay="${3:-2}";
   for i in $(seq 1 "$tries"); do
     if curl -fsS "$url" >/dev/null 2>&1; then echo "[OK] $url"; return 0; fi
     echo "[..] waiting for $url ($i/$tries)"; sleep "$delay";
   done; echo "[ERR] $url failed"; return 1; }
+
+echo "=== [REDEPLOY] Public health ==="
 wait200 "https://juicejunkiez.com/nginx-health"
 wait200 "https://juicejunkiez.com/"
 wait200 "https://juicejunkiez.com/store/"
@@ -184,11 +209,6 @@ curl -fsS https://juicejunkiez.com/sitemap.xml       >/dev/null && echo "[OK] ro
 curl -fsS https://juicejunkiez.com/blog-sitemap.xml  >/dev/null && echo "[OK] blog sitemap" || true
 curl -fsS https://tech.juicejunkiez.com/api/scheduler/health | jq . || true
 curl -fsS https://tech.juicejunkiez.com/api/tech/health       | jq . || true
-
-# Store env sanity (non-invasive)
-echo "=== [REDEPLOY] Store health (env sanity) ==="
-if [ -n "${STRIPE_SECRET_KEY:-}" ]; then echo "[OK] STRIPE_SECRET_KEY present"; else echo "[ERR] STRIPE_SECRET_KEY missing"; fi
-if curl -fsS https://juicejunkiez.com/store/index.html >/dev/null 2>&1; then echo "[OK] store page reachable"; else echo "[ERR] store page not reachable"; fi
 
 echo "=== [REDEPLOY] Tail last 120 lines (tech-gateway) ==="
 pm2 logs tech-gateway --lines 120 --nostream || true
