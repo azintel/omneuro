@@ -1,10 +1,10 @@
-// apps/tech-gateway/src/routes/chat.ts
+////apps/tech-gateway/src/routes/chat.ts
 //
 // Repairbot chat route with access-token guard.
-// - Requires header: X-Access-Token: <your code>
-// - Access code is read from env TECH_GATEWAY_ACCESS_TOKEN (set via PM2 env or SSM).
-// - Uses ../lib/ssm (getOpenAIKey) to fetch OpenAI key from AWS SSM.
-// - Non-streaming for v1.
+// - Accepts:
+//    GET  /api/chat         -> returns embedded HTML UI (no auth here; UI asks for code)
+//    POST /api/chat         -> { messages: [{role, content}, ...] } (guarded by X-Access-Token if env is set)
+// - Uses ../lib/ssm.getOpenAIKey() to fetch OpenAI key from AWS SSM.
 
 import express from "express";
 import type { Request, Response } from "express";
@@ -16,18 +16,18 @@ type Msg = { role: "system" | "user" | "assistant"; content: string };
 
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || "https://api.openai.com/v1";
 const OPENAI_MODEL = process.env.OMNEURO_OPENAI_MODEL || "gpt-4o-mini";
-const ACCESS_TOKEN = process.env.TECH_GATEWAY_ACCESS_TOKEN || ""; // set via PM2 env
+const ACCESS_TOKEN = process.env.TECH_GATEWAY_ACCESS_TOKEN || ""; // set via SSM/PM2 env
 
 const SYSTEM_PROMPT = `
 You are Repairbot, the senior service advisor for Omneuro's EV repair operations.
 - Stay concise and precise.
-- Follow Omneuro rules: small, testable steps; no phantom endpoints; logs before code; docs are source of truth.
-- If a task requires job data or actions, say exactly which action you would perform (e.g. "lookup_job VIN=..."), and we'll call internal tools.
-- Never expose secrets. If unsure, ask for the specific field needed.
+- Follow Omneuro ops rules: small, testable steps; log before code; docs are source of truth.
+- If a task needs data or action, clearly say the action (e.g., "lookup_job VIN=..."); internal tools may execute it.
+- Never expose secrets.
 `.trim();
 
 function requireAccess(req: Request): void {
-  if (!ACCESS_TOKEN) return; // if unset, do not block (can tighten later)
+  if (!ACCESS_TOKEN) return; // if not set, do not block
   const header = (req.header("x-access-token") || "").trim();
   if (header !== ACCESS_TOKEN) {
     const err: any = new Error("unauthorized");
@@ -37,8 +37,7 @@ function requireAccess(req: Request): void {
 }
 
 async function callOpenAI(messages: Msg[]): Promise<string> {
-  const OPENAI_API_KEY = await getOpenAIKey(); // fetched from SSM, cached in-memory
-
+  const OPENAI_API_KEY = await getOpenAIKey();
   const resp = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
     method: "POST",
     headers: {
@@ -52,12 +51,10 @@ async function callOpenAI(messages: Msg[]): Promise<string> {
       stream: false,
     }),
   });
-
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
     throw new Error(`OpenAI error ${resp.status}: ${text}`);
   }
-
   const json = (await resp.json()) as any;
   const content = json?.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenAI response missing content");
@@ -122,9 +119,9 @@ function add(role, content){
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 }
 
-function getToken() {
+function getToken(force=false) {
   let t = localStorage.getItem('ACCESS_TOKEN') || '';
-  if (!t) {
+  if (!t || force) {
     t = prompt('Enter access code to use Repairbot:') || '';
     if (t) localStorage.setItem('ACCESS_TOKEN', t);
   }
@@ -152,6 +149,10 @@ f.addEventListener('submit', async (e) => {
     });
     if (!resp.ok) {
       const t = await resp.text();
+      if (resp.status === 401) {
+        localStorage.removeItem('ACCESS_TOKEN');
+        getToken(true);
+      }
       add('system', 'Error: ' + t);
       send.disabled = false;
       return;
@@ -174,36 +175,20 @@ getToken();
 </html>
 `;
 
-// Primary UI: GET /api/chat (embedded HTML UI)
+// Serve UI at /api/chat (no extra suffix)
 router.get("/chat", (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(HTML_PAGE);
 });
 
-// Primary API: POST /api/chat { messages: Msg[] }
-router.post("/chat", express.json(), async (req: Request, res: Response) => {
-  try {
-    requireAccess(req); // block spending without the code
-    const userMsgs = (req.body?.messages || []) as Msg[];
-    const messages: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }, ...userMsgs];
-    const reply = await callOpenAI(messages);
-    res.status(200).json({ reply });
-  } catch (err: any) {
-    const status = err?.status || 500;
-    const msg = status === 401 ? "unauthorized" : "chat error";
-    console.error("[chat] error:", err?.message || err);
-    res.status(status).send(msg);
-  }
+// Also allow GET /api/chat/ (trailing slash)
+router.get("/chat/", (_req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.status(200).send(HTML_PAGE);
 });
 
-/**
- * Back-compat aliases so older clients using /api/tech/chat still work.
- * These simply mirror the handlers above.
- */
-router.get("/tech/chat", (_req: Request, res: Response) => {
-  res.redirect(302, "/api/chat");
-});
-router.post("/tech/chat", express.json(), async (req: Request, res: Response) => {
+// POST /api/chat { messages: Msg[] }
+router.post("/chat", express.json(), async (req: Request, res: Response) => {
   try {
     requireAccess(req);
     const userMsgs = (req.body?.messages || []) as Msg[];

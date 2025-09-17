@@ -5,13 +5,12 @@ import chatRouter from "./routes/chat.js";
 import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
-import blogRouter from "./routes/blog.js"; // ensure blog router is mounted
-import authRouter from "./auth.js";        // expose garage auth endpoints under /api/garage
+import blogRouter from "./routes/blog.js";
+import authRouter from "./auth.js";
 import cors from "cors";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,18 +23,16 @@ const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Paths under /api/* that remain public (exact matches)
+// Public API endpoints that should bypass Basic Auth
 const API_PUBLIC_PATHS = new Set<string>([
-  "/health",               // /api/health
-  "/tech/health",          // /api/tech/health
-  "/garage/health",        // /api/garage/health
-  "/scheduler/health",     // /api/scheduler/health
-
-  // allow public magic-link endpoints for clients
+  "/health",
+  "/tech/health",
+  "/garage/health",
+  "/scheduler/health",
+  // public client magic-link endpoints
   "/garage/auth/request",
   "/garage/auth/verify",
-
-  // allow the chat UI + POST to work without Basic Auth; guarded by X-Access-Token in chat router
+  // allow the tech chat UI + POST to be reachable without nginx/basic auth
   "/chat",
 ]);
 
@@ -45,6 +42,7 @@ function requireBasicAuthForApi(
   next: express.NextFunction
 ) {
   if (!authEnabled) return next();
+  // allow exact public paths (e.g., /api/chat, /api/health, etc.)
   if (API_PUBLIC_PATHS.has(req.path)) return next();
 
   const hdr = req.headers.authorization || "";
@@ -52,10 +50,8 @@ function requireBasicAuthForApi(
     res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
     return res.status(401).send("Authentication required");
   }
-  const b64 = hdr.slice("Basic ".length).trim();
-  const [u, p] = Buffer.from(b64, "base64").toString().split(":", 2);
+  const [u, p] = Buffer.from(hdr.slice(6), "base64").toString().split(":", 2);
   if (u === BASIC_USER && p === BASIC_PASS) return next();
-
   res.setHeader("WWW-Authenticate", 'Basic realm="Restricted"');
   return res.status(401).send("Invalid credentials");
 }
@@ -83,7 +79,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
 
 // -----------------------------
-// Static website (homepage + garage UI)
+// Static site (homepage + any static assets under /public)
 // -----------------------------
 app.use("/", express.static(path.join(__dirname, "public"), { fallthrough: true }));
 
@@ -92,7 +88,7 @@ app.use("/", express.static(path.join(__dirname, "public"), { fallthrough: true 
 // -----------------------------
 app.use("/api", requireBasicAuthForApi);
 
-// Mount garage auth under /api/garage/*
+// Mount garage auth (client magic-link)
 app.use("/api/garage", authRouter);
 
 // Mount app slices
@@ -103,8 +99,7 @@ app.use("/api/garage/quotes", quotesRouter);
 app.use("/api/scheduler", schedulerRouter);
 app.use("/api/blog", blogRouter);
 
-// Chat endpoints under /api/chat (GET serves UI, POST chats)
-// NOTE: /api/chat is in API_PUBLIC_PATHS above so only X-Access-Token applies.
+// IMPORTANT: Mount chat router at /api so that its "/" handlers appear at /api/chat
 app.use("/api", chatRouter);
 
 // -----------------------------

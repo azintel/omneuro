@@ -1,5 +1,5 @@
+#////scripts/04-redeploy.sh
 #!/bin/bash
-# ////scripts/04-redeploy.sh
 set -euo pipefail
 
 echo "=== [REDEPLOY] Full cycle ==="
@@ -22,20 +22,21 @@ getp() {
     --query "Parameter.Value" --output text 2>/dev/null || true
 }
 
-mask(){ sed -E 's/(.{4}).+(.{4})/\1…\2/'; }
-
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
 # Core IDs (Sheets/Calendar/Scheduler)
 export SHEETS_SPREADSHEET_ID="$(getp "/omneuro/google/sheets_spreadsheet_id")"
 export GOOGLE_CALENDAR_ID="$(getp "/omneuro/google/calendar_id")"
 export SCHED_SPREADSHEET_ID="$(getp "/omneuro/google/scheduler_spreadsheet_id")"
 
-# Tech-gateway auth (basic for /api/* guard)
+# Basic auth for /api/*
 export BASIC_AUTH_USER="$(getp "/omneuro/tech-gateway/BASIC_AUTH_USER")"
 export BASIC_AUTH_PASS="$(getp "/omneuro/tech-gateway/BASIC_AUTH_PASS")"
 
-# Repairbot access token (chat.ts)
+# Tech portal chat access token (try both canonical and legacy keys)
 export TECH_GATEWAY_ACCESS_TOKEN="$(getp "/omneuro/tech-gateway/TECH_GATEWAY_ACCESS_TOKEN")"
+if [[ -z "${TECH_GATEWAY_ACCESS_TOKEN:-}" || "${TECH_GATEWAY_ACCESS_TOKEN}" == "None" ]]; then
+  TECH_GATEWAY_ACCESS_TOKEN="$(getp "/omneuro/tech-gateway/access_token")"
+fi
 
 # Blog
 export BLOG_S3_BUCKET="$(getp "/omneuro/blog/s3_bucket")"
@@ -45,54 +46,31 @@ export BLOG_PREFIX="$(getp "/omneuro/blog/prefix")"
 export BLOG_AWS_REGION="$(getp "/omneuro/blog/aws_region")"
 export BLOG_SITEMAP_KEY="$(getp "/omneuro/blog/sitemap_key")"
 
-# Mail
-export MAIL_TRANSPORT="$(getp "/omneuro/mail/transport")"             # ses|smtp
-export MAIL_FROM="$(getp "/omneuro/mail/from")"                       # "Name <email@domain>"
-export MAIL_SES_REGION="$(getp "/omneuro/mail/ses_region")"
-
-export SMTP_HOST="$(getp "/omneuro/mail/smtp_host")"
-export SMTP_PORT="$(getp "/omneuro/mail/smtp_port")"
-export SMTP_SECURE="$(getp "/omneuro/mail/smtp_secure")"
-export SMTP_USER="$(getp "/omneuro/mail/smtp_user")"
-export SMTP_PASS="$(getp "/omneuro/mail/smtp_pass")"
-
-# Public tech base URL (links in emails)
+# Optional integrations
 export PUBLIC_TECH_BASE_URL="$(getp "/omneuro/tech-gateway/public_base_url")"
-
-# Google Places (future homepage reviews)
 export GOOGLE_PLACES_API_KEY="$(getp "/omneuro/tech-gateway/GOOGLE_PLACES_API_KEY")"
 
-# Normalize empties
+# Normalize empty/None
 [[ -z "${BLOG_SITEMAP_KEY:-}" || "${BLOG_SITEMAP_KEY}" == "None" ]] && BLOG_SITEMAP_KEY="blog/sitemap.xml"
 [[ -z "${BLOG_AWS_REGION:-}" || "${BLOG_AWS_REGION}" == "None" ]] && BLOG_AWS_REGION="$AWS_REGION"
-[[ -z "${PUBLIC_BLOG_BASE_URL:-}" || "${PUBLIC_BLOG_BASE_URL}" == "None" ]] && PUBLIC_BLOG_BASE_URL="${BLOG_BASE_URL:-}"
 
-# Log what we pulled (masked)
+mask(){ sed -E 's/(.{4}).+(.{4})/\1…\2/'; }
 printf "[SSM] SHEETS_SPREADSHEET_ID=%s\n" "$(printf '%s' "${SHEETS_SPREADSHEET_ID:-<none>}" | mask)"
 printf "[SSM] GOOGLE_CALENDAR_ID=%s\n"     "$(printf '%s' "${GOOGLE_CALENDAR_ID:-<none>}" | mask)"
 printf "[SSM] SCHED_SPREADSHEET_ID=%s\n"   "$(printf '%s' "${SCHED_SPREADSHEET_ID:-<none>}" | mask)"
 echo   "[SSM] BASIC_AUTH_USER=${BASIC_AUTH_USER:-<none>}"
-echo   "[SSM] BASIC_AUTH_PASS=$( [ -n "${BASIC_AUTH_PASS:-}" ] && echo '***' || echo '<none>' )"
-echo   "[SSM] TECH_GATEWAY_ACCESS_TOKEN=$( [ -n "${TECH_GATEWAY_ACCESS_TOKEN:-}" ] && echo '***' || echo '<none>' )"
+echo   "[SSM] BASIC_AUTH_PASS=$(printf '%s' "${BASIC_AUTH_PASS:-<none>}" | sed 's/.*/********/')"  # masked
+echo   "[SSM] TECH_GATEWAY_ACCESS_TOKEN=$(printf '%s' "${TECH_GATEWAY_ACCESS_TOKEN:-<none>}" | mask)"
 echo   "[SSM] BLOG_S3_BUCKET=${BLOG_S3_BUCKET:-<none>}"
 echo   "[SSM] BLOG_BASE_URL=${BLOG_BASE_URL:-<none>}"
 echo   "[SSM] PUBLIC_BLOG_BASE_URL=${PUBLIC_BLOG_BASE_URL:-<none>}"
 echo   "[SSM] BLOG_PREFIX=${BLOG_PREFIX:-<none>}"
 echo   "[SSM] BLOG_AWS_REGION=${BLOG_AWS_REGION:-<none>}"
 echo   "[SSM] BLOG_SITEMAP_KEY=${BLOG_SITEMAP_KEY:-<none>}"
-echo   "[SSM] MAIL_TRANSPORT=${MAIL_TRANSPORT:-<none>}"
-echo   "[SSM] MAIL_FROM=${MAIL_FROM:-<none>}"
-echo   "[SSM] MAIL_SES_REGION=${MAIL_SES_REGION:-<none>}"
-echo   "[SSM] SMTP_HOST=${SMTP_HOST:-<none>}"
-echo   "[SSM] SMTP_PORT=${SMTP_PORT:-<none>}"
-echo   "[SSM] SMTP_SECURE=${SMTP_SECURE:-<none>}"
-echo   "[SSM] SMTP_USER=${SMTP_USER:-<none>}"
-echo   "[SSM] SMTP_PASS=$( [ -n "${SMTP_PASS:-}" ] && echo '***' || echo '<none>' )"
 echo   "[SSM] PUBLIC_TECH_BASE_URL=${PUBLIC_TECH_BASE_URL:-<none>}"
-printf "[SSM] GOOGLE_PLACES_API_KEY=%s\n" "$(printf '%s' "${GOOGLE_PLACES_API_KEY:-<none>}" | sed -E 's/.+/****…/')"
+echo   "[SSM] GOOGLE_PLACES_API_KEY=$(printf '%s' "${GOOGLE_PLACES_API_KEY:-<none>}" | mask)"
 
 echo "=== [REDEPLOY] Building apps (npm ci + build) ==="
-mkdir -p /home/ubuntu/build-logs
 set -x
 time npm --prefix apps/brain-api ci
 time npm --prefix apps/brain-api run build | tee /home/ubuntu/build-logs/brain-api-tsc.log
@@ -118,14 +96,6 @@ PUBLIC_BLOG_BASE_URL="${PUBLIC_BLOG_BASE_URL:-${BLOG_BASE_URL:-}}" \
 BLOG_PREFIX="${BLOG_PREFIX:-blog}" \
 BLOG_AWS_REGION="${BLOG_AWS_REGION:-$AWS_REGION}" \
 BLOG_SITEMAP_KEY="${BLOG_SITEMAP_KEY:-blog/sitemap.xml}" \
-MAIL_TRANSPORT="${MAIL_TRANSPORT:-}" \
-MAIL_FROM="${MAIL_FROM:-}" \
-MAIL_SES_REGION="${MAIL_SES_REGION:-$AWS_REGION}" \
-SMTP_HOST="${SMTP_HOST:-}" \
-SMTP_PORT="${SMTP_PORT:-}" \
-SMTP_SECURE="${SMTP_SECURE:-}" \
-SMTP_USER="${SMTP_USER:-}" \
-SMTP_PASS="${SMTP_PASS:-}" \
 PUBLIC_TECH_BASE_URL="${PUBLIC_TECH_BASE_URL:-}" \
 GOOGLE_PLACES_API_KEY="${GOOGLE_PLACES_API_KEY:-}" \
 pm2 startOrReload ecosystem.config.cjs --only tech-gateway --update-env
@@ -138,47 +108,26 @@ pm2 jlist | node -e '
 const a=JSON.parse(require("fs").readFileSync(0,"utf8"));
 const p=a.find(x=>x.name==="tech-gateway")||{};
 const e=p.pm2_env?.env||{};
-function mask(s){ if(!s||s=="<unset>") return s||"<unset>"; return s.length>8 ? s.slice(0,4)+"…"+s.slice(-4) : "***"; }
 console.log({
   SHEETS_SPREADSHEET_ID: e.SHEETS_SPREADSHEET_ID||"<unset>",
   GOOGLE_CALENDAR_ID: e.GOOGLE_CALENDAR_ID||"<unset>",
   SCHED_SPREADSHEET_ID: e.SCHED_SPREADSHEET_ID||"<unset>",
   BASIC_AUTH_USER: e.BASIC_AUTH_USER||"<unset>",
-  BASIC_AUTH_PASS: e.BASIC_AUTH_PASS? "***":"<unset>",
-  TECH_GATEWAY_ACCESS_TOKEN: e.TECH_GATEWAY_ACCESS_TOKEN? "***":"<unset>",
+  TECH_GATEWAY_ACCESS_TOKEN: e.TECH_GATEWAY_ACCESS_TOKEN||"<unset>",
   BLOG_S3_BUCKET: e.BLOG_S3_BUCKET||"<unset>",
   BLOG_BASE_URL: e.BLOG_BASE_URL||"<unset>",
   PUBLIC_BLOG_BASE_URL: e.PUBLIC_BLOG_BASE_URL||"<unset>",
   BLOG_PREFIX: e.BLOG_PREFIX||"<unset>",
   BLOG_AWS_REGION: e.BLOG_AWS_REGION||"<unset>",
   BLOG_SITEMAP_KEY: e.BLOG_SITEMAP_KEY||"<unset>",
-  MAIL_TRANSPORT: e.MAIL_TRANSPORT||"<unset>",
-  MAIL_FROM: e.MAIL_FROM||"<unset>",
-  MAIL_SES_REGION: e.MAIL_SES_REGION||"<unset>",
-  SMTP_HOST: e.SMTP_HOST||"<unset>",
-  SMTP_PORT: e.SMTP_PORT||"<unset>",
-  SMTP_SECURE: e.SMTP_SECURE||"<unset>",
-  SMTP_USER: e.SMTP_USER||"<unset>",
-  SMTP_PASS: e.SMTP_PASS? "***":"<unset>",
   PUBLIC_TECH_BASE_URL: e.PUBLIC_TECH_BASE_URL||"<unset>",
-  GOOGLE_PLACES_API_KEY: e.GOOGLE_PLACES_API_KEY? "****…":"<unset>"
+  GOOGLE_PLACES_API_KEY: e.GOOGLE_PLACES_API_KEY||"<unset>"
 });
 '
 
 echo "=== [REDEPLOY] Publish homepage ==="
 sudo mkdir -p /var/www/juicejunkiez.com
 sudo rsync -av --delete apps/homepage/public/ /var/www/juicejunkiez.com/
-
-echo "=== [REDEPLOY] Publish blog sitemap (best-effort) ==="
-tmpf="$(mktemp /tmp/blog-sitemap.XXXXXX.xml)"
-if aws s3 cp "s3://${BLOG_S3_BUCKET}/${BLOG_SITEMAP_KEY}" "$tmpf" --region "${BLOG_AWS_REGION}" >/dev/null 2>&1; then
-  sudo cp "$tmpf" /var/www/juicejunkiez.com/blog-sitemap.xml
-  sudo chown root:root /var/www/juicejunkiez.com/blog-sitemap.xml
-  echo "[OK] blog-sitemap.xml updated in web root"
-else
-  echo "[WARN] could not fetch blog sitemap from S3"
-fi
-rm -f "$tmpf" || true
 
 echo "=== [REDEPLOY] Sync blog content to web root (one-time) ==="
 BLOG_S3_BUCKET="$BLOG_S3_BUCKET" \
@@ -197,19 +146,8 @@ until curl -fsS http://127.0.0.1:8092/healthz >/dev/null 2>&1; do
   ((tries--)) || { echo "[ERR] tech-gateway /healthz never came up"; break; }
   echo "[..] waiting on /healthz ($((40-tries))/40)"; sleep 1
 done
-
-if curl -fsS http://127.0.0.1:8092/healthz >/dev/null; then
-  echo "[OK] /healthz"
-else
-  echo "[ERR] /healthz"
-fi
-
-if curl -fsS http://127.0.0.1:8092/api/health >/dev/null; then
-  echo "[OK] /api/health"
-else
-  echo "[ERR] /api/health"
-fi
-
+curl -fsS http://127.0.0.1:8092/healthz >/dev/null && echo "[OK] /healthz" || echo "[ERR] /healthz"
+curl -fsS http://127.0.0.1:8092/api/health >/dev/null && echo "[OK] /api/health" || echo "[ERR] /api/health"
 echo "[garage] $(curl -i -s http://127.0.0.1:8092/api/garage/health | head -n 1 || true)"
 
 echo "=== [REDEPLOY] Public health ==="
