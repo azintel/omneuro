@@ -1,46 +1,51 @@
-////scripts/90-blog-sync.sh
+# ////scripts/90-blog-sync.sh
 #!/usr/bin/env bash
-# scripts/90-blog-sync.sh — one-shot blog sync used by redeploy & systemd
-
 set -euo pipefail
 
-BLOG_S3_BUCKET="${BLOG_S3_BUCKET:-juicejunkiez-site-prod}"
-BLOG_AWS_REGION="${BLOG_AWS_REGION:-us-east-2}"
-BLOG_SITEMAP_KEY="${BLOG_SITEMAP_KEY:-blog/sitemap.xml}"
-WEBROOT="/var/www/juicejunkiez.com"
+# one-shot friendly: run with `--one-shot` from redeploy
+ONESHOT="${1:-}"
 
-log(){ printf "[blog-sync] %s\n" "$*"; }
+BLOG_ROOT="/var/www/juicejunkiez.com"
+BLOG_DIR="${BLOG_ROOT}/blog"
+SYSCONFIG="/etc/sysconfig/omneuro-blog"
 
-main() {
-  log "start at $(date -Iseconds)"
+# Load env (bucket/region/sitemap key)
+if [[ -f "$SYSCONFIG" ]]; then
+  # shellcheck disable=SC1090
+  source "$SYSCONFIG"
+fi
 
-  # Ensure webroot exists
-  sudo mkdir -p "${WEBROOT}/blog"
+: "${BLOG_S3_BUCKET:?missing BLOG_S3_BUCKET in $SYSCONFIG}"
+: "${BLOG_AWS_REGION:?missing BLOG_AWS_REGION in $SYSCONFIG}"
+: "${BLOG_SITEMAP_KEY:=blog/sitemap.xml}"
 
-  # Sync blog HTML (exclude sitemap.xml which belongs at web root)
-  aws s3 sync "s3://${BLOG_S3_BUCKET}/blog" \
-      "${WEBROOT}/blog" \
-      --region "${BLOG_AWS_REGION}" \
-      --delete \
-      --exclude "sitemap.xml"
+echo "[blog-sync] start at $(date --iso-8601=seconds)"
 
-  # Fetch sitemap to a unique tmp file, then install atomically to web root
-  tmp_xml="$(mktemp -t blog-sitemap.XXXXXX.xml)"
-  if aws s3 cp "s3://${BLOG_S3_BUCKET}/${BLOG_SITEMAP_KEY}" "${tmp_xml}" --region "${BLOG_AWS_REGION}"; then
-    # install sets perms and does atomic write
-    sudo install -o root -g root -m 0644 "${tmp_xml}" "${WEBROOT}/blog-sitemap.xml"
-    log "sitemap installed to ${WEBROOT}/blog-sitemap.xml"
-  else
-    log "WARN: could not fetch ${BLOG_SITEMAP_KEY} from s3://${BLOG_S3_BUCKET}"
-  fi
-  rm -f "${tmp_xml}"
+# Ensure target dirs exist and perms sane
+sudo mkdir -p "${BLOG_DIR}"
 
-  # Normalize perms
-  sudo chown -R root:root "${WEBROOT}/blog"
-  sudo find "${WEBROOT}/blog" -type d -exec chmod 755 {} \;
-  sudo find "${WEBROOT}/blog" -type f -exec chmod 644 {} \;
+# Sync site content (exclude sitemap.xml; we'll copy it separately)
+# Use sudo so destination under /var/www is writeable
+sudo aws s3 sync "s3://${BLOG_S3_BUCKET}/blog/" "${BLOG_DIR}/" \
+  --region "${BLOG_AWS_REGION}" \
+  --delete \
+  --exclude "sitemap.xml" || true
 
-  log "done at $(date -Iseconds)"
-}
+# Copy sitemap.xml via unique temp file to avoid rename races
+TMP_SITEMAP="$(mktemp /tmp/blog-sitemap.XXXXXX.xml)"
+trap 'rm -f "$TMP_SITEMAP"' EXIT
 
-main "$@"
+aws s3 cp "s3://${BLOG_S3_BUCKET}/${BLOG_SITEMAP_KEY}" "$TMP_SITEMAP" \
+  --region "${BLOG_AWS_REGION}" || true
+
+if [[ -s "$TMP_SITEMAP" ]]; then
+  sudo cp "$TMP_SITEMAP" "${BLOG_ROOT}/blog-sitemap.xml"
+  sudo chown root:root "${BLOG_ROOT}/blog-sitemap.xml"
+fi
+
+# Tighten perms
+sudo chown -R root:root "${BLOG_DIR}" || true
+sudo find "${BLOG_DIR}" -type d -exec chmod 755 {} \; || true
+sudo find "${BLOG_DIR}" -type f -exec chmod 644 {} \; || true
+
+echo "[blog-sync] done at $(date --iso-8601=seconds)"
