@@ -1,4 +1,3 @@
-// ////apps/tech-gateway/src/server.ts
 import techRouter from "./routes/tech.js";
 import garageRouter from "./routes/garage.js";
 import chatRouter from "./routes/chat.js";
@@ -6,8 +5,9 @@ import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
 import blogRouter from "./routes/blog.js";
-import storeRouter from "./routes/store.js";      // <-- mount the store API
+import storeRouter from "./routes/store.js";
 import authRouter from "./auth.js";
+
 import cors from "cors";
 import express from "express";
 import path from "node:path";
@@ -24,16 +24,17 @@ const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Public API paths (exact matches under /api/*)
+// Paths under /api/* that remain public (exact matches)
 const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
   "/scheduler/health",
 
-  // store public endpoints
+  // store public endpoints (homepage needs these)
   "/store/health",
   "/store/products",
+  "/store/checkout",
 
   // allow public magic-link endpoints for clients
   "/garage/auth/request",
@@ -84,7 +85,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
 
 // -----------------------------
-// Static website (homepage + garage UI + /store/* html)
+// Static website (homepage + garage UI)
 // -----------------------------
 app.use("/", express.static(path.join(__dirname, "public"), { fallthrough: true }));
 
@@ -103,11 +104,9 @@ app.use("/api/garage", garageRouter);
 app.use("/api/garage/quotes", quotesRouter);
 app.use("/api/scheduler", schedulerRouter);
 app.use("/api/blog", blogRouter);
-app.use("/api/store", storeRouter); // <-- store API
+app.use("/api/store", storeRouter);
 
-// -----------------------------
 // 404 for API
-// -----------------------------
 app.use("/api", (_req, res) => res.status(404).json({ ok: false, error: "not_found" }));
 
 // -----------------------------

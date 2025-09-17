@@ -1,28 +1,34 @@
-<!-- ////apps/homepage/public/index.html -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>Juice Junkiez | Baltimore E-Bike, E-Scooter, EUC & PEV Repair Shop</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <meta name="description" content="Baltimore’s personal electric vehicle (PEV) repair shop for e-bikes, e-scooters, e-skateboards, and electric unicycles (EUC). Diagnostics, repairs, upgrades, custom EV builds, and custom lithium battery packs." />
+
   <link rel="canonical" href="https://juicejunkiez.com/">
+
+  <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Juice Junkiez | Baltimore E-Bike, E-Scooter, EUC & PEV Repair Shop">
   <meta property="og:description" content="Baltimore’s PEV repair shop for e-bikes, e-scooters, e-skateboards, and EUCs. Repairs, upgrades, custom builds, and custom battery packs.">
   <meta property="og:url" content="https://juicejunkiez.com/">
-  <meta property="og:image" content="https://juicejunkiez.com/img/jj-logo.png">
+  <meta property="og:image" content="https://juicejunkiez-site-prod.s3.amazonaws.com/images/jj-logo.png">
+
+  <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Juice Junkiez | Baltimore E-Bike, E-Scooter, EUC & PEV Repair Shop">
   <meta name="twitter:description" content="Repairs, upgrades, custom builds, and custom battery packs for PEVs in Baltimore.">
-  <meta name="twitter:image" content="https://juicejunkiez.com/img/jj-logo.png">
-  <script type="application/ld+json">{ "@" : "fix json below" }</script>
+  <meta name="twitter:image" content="https://juicejunkiez-site-prod.s3.amazonaws.com/images/jj-logo.png">
+
+  <!-- LocalBusiness JSON-LD -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
     "name": "Juice Junkiez",
-    "image": "https://juicejunkiez.com/img/jj-logo.png",
+    "image": "https://juicejunkiez-site-prod.s3.amazonaws.com/images/jj-logo.png",
     "url": "https://juicejunkiez.com/",
     "telephone": "+1-951-296-8725",
     "priceRange": "$$",
@@ -39,14 +45,63 @@
     "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5.0", "reviewCount": "9" }
   }
   </script>
+
   <style>
-    /* (unchanged styles)… */
+    :root{
+      --bg:#0a0a0a; --card:#131313; --ink:#f5f5f5; --muted:#b9b9b9;
+      --line:#242424; --accent:#ffd84d; --accent-ink:#1b1b1b; --radius:14px; --pad:16px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:linear-gradient(180deg, rgba(10,10,10,.95), rgba(10,10,10,.85));backdrop-filter:saturate(1.2) blur(4px)}
+    header .brand{display:flex;align-items:center;gap:12px}
+    header img{width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 10px rgba(255,216,77,.15))}
+    header h1{font-size:18px;margin:0}
+    .badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);padding:6px 10px;border-radius:999px;background:#0f0f0f;color:var(--muted);font-size:12px}
+    .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px rgba(255,216,77,.2)}
+    main{max-width:980px;margin:0 auto;padding:24px}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media (min-width:880px){ .grid{grid-template-columns:2fr 1fr} }
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--pad)}
+    h2{margin:0 0 10px 0;font-size:18px}
+    p{margin:8px 0;color:var(--muted);line-height:1.5}
+    .links{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+    a.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:#0f0f0f;color:var(--ink);padding:10px 14px;border-radius:12px;text-decoration:none;transition:border-color .15s, box-shadow .15s, background .15s}
+    a.btn:hover{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,216,77,.15)}
+    a.btn--accent{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+    a.btn--accent:hover{box-shadow:0 0 0 4px rgba(255,216,77,.25)}
+    .muted{color:var(--muted);font-size:14px}
+    footer{border-top:1px solid var(--line);padding:18px 20px;margin-top:24px;color:var(--muted);text-align:center}
+    .cols{display:flex;gap:10px;flex-wrap:wrap}
+    .cols .card{flex:1 1 280px}
+    .gold{color:var(--accent)}
+    .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:14px}
+    .kv b{color:var(--ink)}
+    .pill{display:inline-block;background:#0f0f0f;border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px}
+    .stars{letter-spacing:1px}
+
+    /* Reviews list */
+    .reviews-list{list-style:none;padding:0;margin:10px 0 0}
+    .review{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+    .review .author{color:var(--ink);font-weight:600}
+    .review .rating{font-size:12px}
+    .review .text{color:var(--muted)}
+    .review .date{font-size:12px;color:var(--muted)}
+
+    /* Instagram strip */
+    .ig-wrap{margin-top:16px}
+    .ig-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    @media (min-width:720px){ .ig-grid{grid-template-columns:repeat(6,1fr)} }
+    .ig-grid a{display:block;aspect-ratio:1/1;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#0f0f0f}
+    .ig-grid img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.05)}
+    .ig-actions{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .ig-actions .handle{color:var(--muted);font-size:14px}
   </style>
 </head>
 <body>
 <header>
   <div class="brand">
-    <img src="/img/jj-logo.png" alt="Juice Junkiez – Baltimore E-Bike & E-Scooter Repair Logo" />
+    <img src="https://juicejunkiez-site-prod.s3.amazonaws.com/images/jj-logo.png" alt="Juice Junkiez – Baltimore E-Bike & E-Scooter Repair Logo" />
     <h1>Juice Junkiez — Baltimore E-Bike, E-Scooter, EUC & PEV Repair</h1>
   </div>
   <div class="badge"><span class="dot"></span>Baltimore • PEV Service & Shop</div>
@@ -63,16 +118,131 @@
         <a class="btn" href="https://tech.juicejunkiez.com/">Tech Portal</a>
       </div>
       <p class="muted">The Client Garage lets you add your vehicles, book service, track job status, and pay invoices.</p>
+
+      <!-- Instagram feed strip -->
+      <div class="ig-wrap">
+        <div class="ig-actions">
+          <h2 style="margin:0;">Latest on Instagram</h2>
+          <a class="btn" href="https://instagram.com/juicejunkiezmd" target="_blank" rel="noopener">Follow @juicejunkiezmd</a>
+        </div>
+        <div id="ig-grid" class="ig-grid" aria-live="polite">
+          <!-- Filled by JS. Fallback below if no API. -->
+        </div>
+        <noscript>
+          <p class="muted">See photos on <a class="gold" href="https://instagram.com/juicejunkiezmd" target="_blank" rel="noopener">Instagram</a>.</p>
+        </noscript>
+      </div>
     </section>
 
-    <!-- (rest of the page unchanged)… -->
+    <aside class="card">
+      <h2>Contact</h2>
+      <div class="kv" aria-label="contact info">
+        <b>Email</b> <a class="gold" href="mailto:juicejunkiezmd@gmail.com">juicejunkiezmd@gmail.com</a>
+        <b>Phone</b> <a class="gold" href="tel:+19512968725">(951) 296-8725</a>
+        <b>Drop-off</b> <span>409 S Addison St, Baltimore, MD</span>
+        <b>Mailing</b> <span>Available upon request</span>
+      </div>
+      <p class="muted" style="margin-top:10px;">Hours vary by schedule and appointments. Call or email to coordinate drop-offs.</p>
+      <p class="pill" style="margin-top:8px;">Stripe checkout now live</p>
+    </aside>
+  </div>
+
+  <!-- Reviews + Services + Updates row (unchanged) -->
+  <div class="cols" style="margin-top:16px;">
+    <div class="card" aria-label="customer reviews">
+      <h2>Reviews</h2>
+      <p class="muted">
+        <span class="stars" aria-label="5 out of 5 stars">★★★★★</span> <b>5.0</b> rating on Google · <b>9</b> reviews —
+        <a class="gold" href="https://search.google.com/local/reviews?placeid=ChIJ9VJWd14dyIkRLwlOW1DHJjI" rel="nofollow noopener" id="google-reviews-link">Read our Google reviews</a>
+      </p>
+      <ul class="reviews-list" id="reviews-list" aria-live="polite"></ul>
+      <noscript><p class="muted">Enable JavaScript to see live review quotes.</p></noscript>
+    </div>
+
+    <div class="card">
+      <h2>Services</h2>
+      <p class="muted">Diagnostics, battery, controller, lighting, firmware, waterproofing, wiring, accessories, and custom builds.</p>
+    </div>
+
+    <div class="card">
+      <h2>Automated Updates</h2>
+      <p class="muted">Omneuro keeps you informed with job updates and invoices via your preferred channel.</p>
+    </div>
   </div>
 </main>
 
 <footer>© <span id="y"></span> Juice Junkiez • Powered by Omneuro</footer>
+
 <script>
+  // year
   document.getElementById('y').textContent = new Date().getFullYear();
-  // Reviews loader (unchanged) …
+
+  // Reviews loader (unchanged; expects tech API)
+  (async function loadReviews(){
+    try {
+      const PLACE_ID = "ChIJ9VJWd14dyIkRLwlOW1DHJjI";
+      const REVIEWS_API_URL = `https://tech.juicejunkiez.com/api/public/reviews?place_id=${encodeURIComponent(PLACE_ID)}`;
+      const res = await fetch(REVIEWS_API_URL, { mode: "cors", credentials: "omit", cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !Array.isArray(data.reviews)) return;
+
+      if (typeof data.rating === "number" && typeof data.total === "number") {
+        const summaryP = document.querySelector('[aria-label="customer reviews"] p.muted');
+        if (summaryP) {
+          summaryP.innerHTML =
+            `<span class="stars" aria-label="${data.rating.toFixed(1)} out of 5 stars">★★★★★</span> <b>${data.rating.toFixed(1)}</b> rating on Google · <b>${data.total}</b> reviews — ` +
+            `<a class="gold" href="https://search.google.com/local/reviews?placeid=${PLACE_ID}" rel="nofollow noopener" id="google-reviews-link">Read our Google reviews</a>`;
+        }
+      }
+
+      const list = document.getElementById("reviews-list");
+      list.innerHTML = "";
+      data.reviews.slice(0,3).forEach(r => {
+        const li = document.createElement("li");
+        li.className = "review";
+        const stars = "★★★★★".slice(0, Math.round(r.rating || 5));
+        const dateStr = r.time ? new Date(r.time * 1000).toLocaleDateString() : (r.relative_time_description || "");
+        li.innerHTML = `
+          <div class="author">${(r.author_name || "Customer")}</div>
+          <div class="rating"><span class="stars" aria-label="${r.rating || 5} out of 5 stars">${stars}</span></div>
+          <p class="text">${(r.text || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
+          <div class="date">${dateStr}</div>
+        `;
+        list.appendChild(li);
+      });
+    } catch {}
+  })();
+
+  // Instagram strip:
+  // Tries a future backend feed: https://tech.juicejunkiez.com/api/public/instagram/feed?limit=8
+  // If unavailable, shows only the "Follow" button.
+  (async function loadIG(){
+    const grid = document.getElementById('ig-grid');
+    try {
+      const url = 'https://tech.juicejunkiez.com/api/public/instagram/feed?limit=8';
+      const res = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
+      if (!res.ok) { grid.innerHTML = ''; return; }
+      const data = await res.json();
+      const posts = Array.isArray(data?.items) ? data.items : [];
+      if (!posts.length) { grid.innerHTML = ''; return; }
+      grid.innerHTML = '';
+      posts.forEach(p => {
+        const a = document.createElement('a');
+        a.href = p.permalink || 'https://instagram.com/juicejunkiezmd';
+        a.target = '_blank';
+        a.rel = 'noopener';
+        const img = document.createElement('img');
+        img.alt = p.caption ? String(p.caption).slice(0,80) : 'Instagram photo';
+        img.loading = 'lazy';
+        img.src = p.media_url || p.thumbnail_url || 'https://juicejunkiez-site-prod.s3.amazonaws.com/images/jj-logo.png';
+        a.appendChild(img);
+        grid.appendChild(a);
+      });
+    } catch {
+      grid.innerHTML = '';
+    }
+  })();
 </script>
 </body>
 </html>

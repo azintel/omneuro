@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Blog • Juice Junkiez</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;background:#0a0a0a;color:#f5f5f5;margin:0}
+  main{max-width:900px;margin:0 auto;padding:24px}
+  .post{background:#131313;border:1px solid #242424;border-radius:14px;padding:16px;margin:12px 0}
+  a{color:#ffd84d;text-decoration:none}
+  a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+  <main>
+    <h1>Blog</h1>
+    <div id="list"></div>
+  </main>
+<script>
+(async function(){
+  try{
+    const res = await fetch("/blog-sitemap.xml",{cache:"no-store"});
+    if(!res.ok) return;
+    const xml = await res.text();
+    const dom = new DOMParser().parseFromString(xml,"application/xml");
+    const urls = Array.from(dom.querySelectorAll("urlset > url"));
+    const entries = urls.map(u => ({
+      loc: u.querySelector("loc")?.textContent || "",
+      lastmod: u.querySelector("lastmod")?.textContent || ""
+    })).filter(x => x.loc.includes("/blog/"));
+    entries.sort((a,b) => (b.lastmod||"").localeCompare(a.lastmod||""));
+    const list = document.getElementById("list");
+    list.innerHTML = entries.slice(0,50).map(e => `
+      <div class="post">
+        <a href="${e.loc}">${e.loc.split("/").slice(-2,-1)[0].replace(/-/g," ")}</a>
+        ${e.lastmod ? `<div style="opacity:.7;font-size:12px;margin-top:6px">Updated ${new Date(e.lastmod).toLocaleDateString()}</div>` : ""}
+      </div>
+    `).join("");
+  }catch(_e){}
+})();
+</script>
+</body>
+</html>
