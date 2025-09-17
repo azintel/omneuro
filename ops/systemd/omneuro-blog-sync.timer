@@ -1,0 +1,14 @@
+# ops/systemd/omneuro-blog-sync.timer
+[Unit]
+Description=Run Omneuro Blog sync periodically
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=5m
+RandomizedDelaySec=30s
+AccuracySec=30s
+Persistent=true
+Unit=omneuro-blog-sync.service
+
+[Install]
+WantedBy=timers.target

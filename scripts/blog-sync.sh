@@ -2,28 +2,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Sync blog content from S3 to nginx webroot.
-# Expects BLOG_S3_BUCKET and BLOG_AWS_REGION in env (04-redeploy passes them in).
-# Safe defaults below so it also works when run manually.
+# Load env exported by redeploy for systemd jobs
+if [[ -f /etc/sysconfig/omneuro-blog ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  . /etc/sysconfig/omneuro-blog
+  set +a
+fi
 
-BLOG_S3_BUCKET="${BLOG_S3_BUCKET:-juicejunkiez-site-prod}"
-BLOG_AWS_REGION="${BLOG_AWS_REGION:-us-east-2}"
+: "${BLOG_S3_BUCKET:?BLOG_S3_BUCKET required}"
+: "${BLOG_AWS_REGION:=us-east-2}"
 
-WEB_ROOT="/var/www/juicejunkiez.com"
-BLOG_DST="${WEB_ROOT}/blog"
+WEBROOT="/var/www/juicejunkiez.com"
+BLOG_DIR="${WEBROOT}/blog"
 
-# Ensure webroot exists
-sudo mkdir -p "${BLOG_DST}"
+sudo mkdir -p "${BLOG_DIR}"
 
-# Pull everything under s3://<bucket>/blog except sitemap.xml (that lives at site root separately)
-aws s3 sync "s3://${BLOG_S3_BUCKET}/blog" "${BLOG_DST}" \
+# Sync blog HTML (exclude sitemap.xml which we place at webroot)
+aws s3 sync "s3://${BLOG_S3_BUCKET}/blog" "${BLOG_DIR}" \
   --region "${BLOG_AWS_REGION}" \
-  --delete \
-  --exclude "sitemap.xml"
+  --delete --exclude "sitemap.xml" || true
 
-# Permissions (nginx-friendly)
-sudo chown -R root:root "${BLOG_DST}"
-sudo find "${BLOG_DST}" -type d -exec chmod 755 {} \;
-sudo find "${BLOG_DST}" -type f -exec chmod 644 {} \;
+# Permissions: dirs 755, files 644
+sudo chown -R root:root "${BLOG_DIR}" || true
+sudo find "${BLOG_DIR}" -type d -exec chmod 755 {} \; || true
+sudo find "${BLOG_DIR}" -type f -exec chmod 644 {} \; || true
 
-echo "[blog-sync] OK: $(date -Is) bucket=${BLOG_S3_BUCKET} region=${BLOG_AWS_REGION}"
+# Refresh blog-sitemap.xml into webroot (best-effort)
+if [[ -n "${BLOG_SITEMAP_KEY:-}" ]]; then
+  aws s3 cp "s3://${BLOG_S3_BUCKET}/${BLOG_SITEMAP_KEY}" "/tmp/blog-sitemap.xml" --region "${BLOG_AWS_REGION}" || true
+  if [[ -s /tmp/blog-sitemap.xml ]]; then
+    sudo cp /tmp/blog-sitemap.xml "${WEBROOT}/blog-sitemap.xml"
+    sudo chown root:root "${WEBROOT}/blog-sitemap.xml"
+  fi
+fi
+
+echo "[blog-sync] done at $(date -Is)"
