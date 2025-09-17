@@ -6,7 +6,8 @@ import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
 import blogRouter from "./routes/blog.js";
-import storeRouter from "./routes/store.js";     // <— store API
+import storeRouter from "./routes/store.js";      // <-- mount the store API
+import authRouter from "./auth.js";
 import cors from "cors";
 import express from "express";
 import path from "node:path";
@@ -16,25 +17,27 @@ import { randomUUID } from "node:crypto";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// -------- Basic Auth for /api/* --------
+// -----------------------------
+// Auth config (scoped to /api/*)
+// -----------------------------
 const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Exact paths that remain public (no auth)
+// Public API paths (exact matches under /api/*)
 const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
   "/scheduler/health",
 
-  // garage magic link
+  // store public endpoints
+  "/store/health",
+  "/store/products",
+
+  // allow public magic-link endpoints for clients
   "/garage/auth/request",
   "/garage/auth/verify",
-
-  // public store endpoints
-  "/public/store/products",
-  "/public/store/checkout",
 ]);
 
 function requireBasicAuthForApi(
@@ -58,7 +61,9 @@ function requireBasicAuthForApi(
   return res.status(401).send("Invalid credentials");
 }
 
-// -------- Middlewares --------
+// -----------------------------
+// Middlewares
+// -----------------------------
 app.use(express.json({ limit: "5mb" }));
 app.use(cors());
 
@@ -71,40 +76,43 @@ app.use((req, res, next) => {
   next();
 });
 
-// -------- Health --------
+// -----------------------------
+// Health + diag
+// -----------------------------
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/tech/health", (_req, res) => res.json({ ok: true }));
 
-// -------- Static site (homepage + store UI) --------
+// -----------------------------
+// Static website (homepage + garage UI + /store/* html)
+// -----------------------------
 app.use("/", express.static(path.join(__dirname, "public"), { fallthrough: true }));
 
-// -------- API (auth gate) --------
+// -----------------------------
+// API (Basic Auth protected except API_PUBLIC_PATHS)
+// -----------------------------
 app.use("/api", requireBasicAuthForApi);
 
-// Garage auth endpoints under /api/garage/*
-import authRouter from "./auth.js";
+// Mount garage auth under /api/garage/*
 app.use("/api/garage", authRouter);
 
-// App slices
+// Mount app slices
 app.use("/api/tech", techRouter);
 app.use("/api/catalog", catalogRouter);
 app.use("/api/garage", garageRouter);
 app.use("/api/garage/quotes", quotesRouter);
 app.use("/api/scheduler", schedulerRouter);
 app.use("/api/blog", blogRouter);
+app.use("/api/store", storeRouter); // <-- store API
 
-// Store API:
-//  - Admin endpoints: /api/store/admin/*  (Basic Auth protected by gate above)
-//  - Health:          /api/store/health   (requires auth, used by redeploy)
-//  - Public endpoints mirrored under /api/public/store/* for frontend
-app.use("/api/store", storeRouter);
-app.use("/api/public/store", storeRouter);
-
+// -----------------------------
 // 404 for API
+// -----------------------------
 app.use("/api", (_req, res) => res.status(404).json({ ok: false, error: "not_found" }));
 
-// -------- Server --------
+// -----------------------------
+// Server
+// -----------------------------
 const PORT = Number(process.env.PORT || 8080);
 app.listen(PORT, () => {
   console.log(`[tech-gateway] listening on :${PORT}`);
