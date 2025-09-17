@@ -30,7 +30,7 @@ const API_PUBLIC_PATHS = new Set<string>([
   "/tech/health",          // /api/tech/health
   "/garage/health",        // /api/garage/health
   "/scheduler/health",     // /api/scheduler/health
-
+  "/chat",                 // <-- allow Repairbot UI + POST chat w/ X-Access-Token
   // allow public magic-link endpoints for clients
   "/garage/auth/request",
   "/garage/auth/verify",
@@ -99,6 +99,7 @@ app.use("/api/garage", garageRouter);
 app.use("/api/garage/quotes", quotesRouter);
 app.use("/api/scheduler", schedulerRouter);
 app.use("/api/blog", blogRouter);
+app.use("/api/chat", chatRouter);  // <-- MOUNT REPAIRBOT HERE
 
 // -----------------------------
 // 404 for API

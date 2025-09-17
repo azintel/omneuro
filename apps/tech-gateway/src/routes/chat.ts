@@ -1,8 +1,8 @@
 // apps/tech-gateway/src/routes/chat.ts
 //
-// Minimal Repairbot chat route with access-token guard.
+// Repairbot chat route with access-token guard.
 // - Requires header: X-Access-Token: <your code>
-// - Access code is read from env TECH_GATEWAY_ACCESS_TOKEN (set via PM2 env or SSM if you prefer).
+// - Access code is read from env TECH_GATEWAY_ACCESS_TOKEN (set via PM2 env or SSM).
 // - Uses ../lib/ssm (getOpenAIKey) to fetch OpenAI key from AWS SSM.
 // - Non-streaming for v1.
 
@@ -167,23 +167,45 @@ f.addEventListener('submit', async (e) => {
 });
 
 // boot
-add('system', 'Repairbot ready. Access code required.', 'system');
+add('system', 'Repairbot ready. Access code required.');
 getToken();
 </script>
 </body>
 </html>
 `;
 
-// GET /api/chat (embedded HTML UI)
+// Primary UI: GET /api/chat (embedded HTML UI)
 router.get("/chat", (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(HTML_PAGE);
 });
 
-// POST /api/chat { messages: Msg[] }
+// Primary API: POST /api/chat { messages: Msg[] }
 router.post("/chat", express.json(), async (req: Request, res: Response) => {
   try {
-    requireAccess(req); // <-- block spending without the code
+    requireAccess(req); // block spending without the code
+    const userMsgs = (req.body?.messages || []) as Msg[];
+    const messages: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }, ...userMsgs];
+    const reply = await callOpenAI(messages);
+    res.status(200).json({ reply });
+  } catch (err: any) {
+    const status = err?.status || 500;
+    const msg = status === 401 ? "unauthorized" : "chat error";
+    console.error("[chat] error:", err?.message || err);
+    res.status(status).send(msg);
+  }
+});
+
+/**
+ * Back-compat aliases so older clients using /api/tech/chat still work.
+ * These simply mirror the handlers above.
+ */
+router.get("/tech/chat", (_req: Request, res: Response) => {
+  res.redirect(302, "/api/chat");
+});
+router.post("/tech/chat", express.json(), async (req: Request, res: Response) => {
+  try {
+    requireAccess(req);
     const userMsgs = (req.body?.messages || []) as Msg[];
     const messages: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }, ...userMsgs];
     const reply = await callOpenAI(messages);

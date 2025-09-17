@@ -29,6 +29,7 @@ apps/tech-gateway/src/db.ts
 apps/tech-gateway/src/lib/blog.ts
 apps/tech-gateway/src/lib/calendar.ts
 apps/tech-gateway/src/lib/db.ts
+apps/tech-gateway/src/lib/mailer.ts
 apps/tech-gateway/src/lib/sheets.ts
 apps/tech-gateway/src/lib/ssm.ts
 apps/tech-gateway/src/mw/reqId.ts
