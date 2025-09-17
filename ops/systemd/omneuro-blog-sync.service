@@ -1,0 +1,18 @@
+# ops/systemd/omneuro-blog-sync.service
+[Unit]
+Description=Sync blog content from S3 to nginx webroot (/var/www/juicejunkiez.com/blog)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=AWS_REGION=us-east-2
+WorkingDirectory=/home/ubuntu/omneuro
+ExecStart=/usr/bin/env bash -lc '/home/ubuntu/omneuro/scripts/blog-sync.sh'
+NoNewPrivileges=yes
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

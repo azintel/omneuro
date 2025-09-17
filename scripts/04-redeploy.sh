@@ -1,3 +1,4 @@
+# scripts/04-redeploy.sh
 #!/bin/bash
 set -euo pipefail
 
@@ -34,6 +35,9 @@ export BLOG_S3_BUCKET="$(getp "/omneuro/blog/s3_bucket")"
 export BLOG_BASE_URL="$(getp "/omneuro/blog/base_url")"
 export BLOG_AWS_REGION="$(getp "/omneuro/blog/aws_region")"
 export BLOG_SITEMAP_KEY="$(getp "/omneuro/blog/sitemap_key")"
+# NEW: public URL + prefix for canonical links
+export PUBLIC_BLOG_BASE_URL="$(getp "/omneuro/blog/public_blog_base_url")"
+export BLOG_PREFIX="$(getp "/omneuro/blog/prefix")"
 
 # Mailer
 export MAIL_TRANSPORT="$(getp "/omneuro/mail/transport")"           # ses|smtp|log
@@ -52,16 +56,20 @@ export PUBLIC_TECH_BASE_URL="$(getp "/omneuro/tech/public_base_url")"
 [[ -z "${BLOG_SITEMAP_KEY:-}" || "${BLOG_SITEMAP_KEY}" == "None" ]] && BLOG_SITEMAP_KEY="blog/sitemap.xml"
 [[ -z "${BLOG_AWS_REGION:-}" || "${BLOG_AWS_REGION}" == "None" ]] && BLOG_AWS_REGION="$AWS_REGION"
 [[ -z "${BLOG_BASE_URL:-}"   || "${BLOG_BASE_URL}"   == "None" ]] && BLOG_BASE_URL="https://juicejunkiez.com"
+[[ -z "${PUBLIC_BLOG_BASE_URL:-}" || "${PUBLIC_BLOG_BASE_URL}" == "None" ]] && PUBLIC_BLOG_BASE_URL="${BLOG_BASE_URL}"
+[[ -z "${BLOG_PREFIX:-}"     || "${BLOG_PREFIX}"     == "None" ]] && BLOG_PREFIX="blog"
 [[ -z "${MAIL_TRANSPORT:-}"  || "${MAIL_TRANSPORT}"  == "None" ]] && MAIL_TRANSPORT="ses"
 [[ -z "${MAIL_SES_REGION:-}" || "${MAIL_SES_REGION}" == "None" ]] && MAIL_SES_REGION="$AWS_REGION"
 [[ -z "${PUBLIC_TECH_BASE_URL:-}" || "${PUBLIC_TECH_BASE_URL}" == "None" ]] && PUBLIC_TECH_BASE_URL="https://tech.juicejunkiez.com"
 
-# Log what we pulled (masked)
+# Log what we pulled (masked where appropriate)
 printf "[SSM] SHEETS_SPREADSHEET_ID=%s\n" "$(printf '%s' "${SHEETS_SPREADSHEET_ID:-<none>}" | mask)"
 printf "[SSM] GOOGLE_CALENDAR_ID=%s\n"     "$(printf '%s' "${GOOGLE_CALENDAR_ID:-<none>}" | mask)"
 printf "[SSM] SCHED_SPREADSHEET_ID=%s\n"   "$(printf '%s' "${SCHED_SPREADSHEET_ID:-<none>}" | mask)"
 echo   "[SSM] BLOG_S3_BUCKET=${BLOG_S3_BUCKET:-<none>}"
 echo   "[SSM] BLOG_BASE_URL=${BLOG_BASE_URL:-<none>}"
+echo   "[SSM] PUBLIC_BLOG_BASE_URL=${PUBLIC_BLOG_BASE_URL:-<none>}"
+echo   "[SSM] BLOG_PREFIX=${BLOG_PREFIX:-<none>}"
 echo   "[SSM] BLOG_AWS_REGION=${BLOG_AWS_REGION:-<none>}"
 echo   "[SSM] BLOG_SITEMAP_KEY=${BLOG_SITEMAP_KEY:-<none>}"
 echo   "[SSM] MAIL_TRANSPORT=${MAIL_TRANSPORT:-<none>}"
@@ -89,15 +97,15 @@ ls -1 apps/tech-gateway/dist/{db,routes,server}.js 2>/dev/null || true
 ls -1 apps/brain-api/dist/server.js 2>/dev/null || true
 
 echo "=== [REDEPLOY] Restart PM2 (with env) ==="
-# IMPORTANT: ensure these envs are present in PM2's app env by passing them and
-# also having them listed in ecosystem.config.cjs.
 SHEETS_SPREADSHEET_ID="${SHEETS_SPREADSHEET_ID:-}" \
 GOOGLE_CALENDAR_ID="${GOOGLE_CALENDAR_ID:-}" \
 SCHED_SPREADSHEET_ID="${SCHED_SPREADSHEET_ID:-}" \
 BLOG_S3_BUCKET="${BLOG_S3_BUCKET:-}" \
 BLOG_BASE_URL="${BLOG_BASE_URL:-}" \
+PUBLIC_BLOG_BASE_URL="${PUBLIC_BLOG_BASE_URL:-${BLOG_BASE_URL:-https://juicejunkiez.com}}" \
 BLOG_AWS_REGION="${BLOG_AWS_REGION:-$AWS_REGION}" \
 BLOG_SITEMAP_KEY="${BLOG_SITEMAP_KEY:-blog/sitemap.xml}" \
+BLOG_PREFIX="${BLOG_PREFIX:-blog}" \
 MAIL_TRANSPORT="${MAIL_TRANSPORT:-ses}" \
 MAIL_FROM="${MAIL_FROM:-Juice Junkiez <notifications@juicejunkiez.com>}" \
 MAIL_SES_REGION="${MAIL_SES_REGION:-$AWS_REGION}" \
@@ -123,6 +131,8 @@ console.log({
   SCHED_SPREADSHEET_ID: e.SCHED_SPREADSHEET_ID||"<unset>",
   BLOG_S3_BUCKET: e.BLOG_S3_BUCKET||"<unset>",
   BLOG_BASE_URL: e.BLOG_BASE_URL||"<unset>",
+  PUBLIC_BLOG_BASE_URL: e.PUBLIC_BLOG_BASE_URL||"<unset>",
+  BLOG_PREFIX: e.BLOG_PREFIX||"<unset>",
   BLOG_AWS_REGION: e.BLOG_AWS_REGION||"<unset>",
   BLOG_SITEMAP_KEY: e.BLOG_SITEMAP_KEY||"<unset>",
   MAIL_TRANSPORT: e.MAIL_TRANSPORT||"<unset>",
@@ -150,11 +160,21 @@ fi
 
 echo "=== [REDEPLOY] Sync blog content to web root ==="
 sudo mkdir -p /var/www/juicejunkiez.com/blog
-# exclude sitemap.xml (already copied to web root)
 aws s3 sync "s3://${BLOG_S3_BUCKET}/blog" /var/www/juicejunkiez.com/blog \
   --region "${BLOG_AWS_REGION}" --delete --exclude "sitemap.xml" || true
 sudo chown -R root:root /var/www/juicejunkiez.com/blog || true
-echo "[OK] blog content synced to /var/www/juicejunkiez.com/blog"
+
+echo "=== [REDEPLOY] Install/enable blog sync timer (systemd) ==="
+if [[ -f ops/systemd/omneuro-blog-sync.service && -f ops/systemd/omneuro-blog-sync.timer ]]; then
+  sudo install -m 0644 ops/systemd/omneuro-blog-sync.service /etc/systemd/system/omneuro-blog-sync.service
+  sudo install -m 0644 ops/systemd/omneuro-blog-sync.timer   /etc/systemd/system/omneuro-blog-sync.timer
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now omneuro-blog-sync.timer
+  sudo systemctl start omneuro-blog-sync.service || true
+  echo "[OK] systemd blog sync timer enabled"
+else
+  echo "[WARN] systemd unit files not found in repo; skipping timer install"
+fi
 
 echo "=== [REDEPLOY] Local health checks ==="
 tries=40
