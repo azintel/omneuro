@@ -1,12 +1,12 @@
-//// apps/tech-gateway/src/server.ts
+////apps/tech-gateway/src/server.ts
 import techRouter from "./routes/tech.js";
 import garageRouter from "./routes/garage.js";
 import chatRouter from "./routes/chat.js";
 import catalogRouter from "./routes/catalog.js";
 import quotesRouter from "./routes/quotes.js";
 import schedulerRouter from "./routes/scheduler.js";
-import blogRouter from "./routes/blog.js";
-import authRouter from "./auth.js";
+import blogRouter from "./routes/blog.js"; // ensure blog router is mounted
+import authRouter from "./auth.js";        // expose garage auth endpoints under /api/garage
 import cors from "cors";
 import express from "express";
 import path from "node:path";
@@ -30,9 +30,13 @@ const API_PUBLIC_PATHS = new Set<string>([
   "/tech/health",          // /api/tech/health
   "/garage/health",        // /api/garage/health
   "/scheduler/health",     // /api/scheduler/health
+
+  // allow public magic-link endpoints for clients
   "/garage/auth/request",
   "/garage/auth/verify",
-  "/chat"                  // <-- allow Repairbot UI/API (token-gated) without Basic
+
+  // allow the chat UI + POST to work without Basic Auth; guarded by X-Access-Token in chat router
+  "/chat",
 ]);
 
 function requireBasicAuthForApi(
@@ -88,7 +92,7 @@ app.use("/", express.static(path.join(__dirname, "public"), { fallthrough: true 
 // -----------------------------
 app.use("/api", requireBasicAuthForApi);
 
-// Garage auth under /api/garage/*
+// Mount garage auth under /api/garage/*
 app.use("/api/garage", authRouter);
 
 // Mount app slices
@@ -98,7 +102,10 @@ app.use("/api/garage", garageRouter);
 app.use("/api/garage/quotes", quotesRouter);
 app.use("/api/scheduler", schedulerRouter);
 app.use("/api/blog", blogRouter);
-app.use("/api/chat", chatRouter); // <-- MOUNT CHAT ROUTER
+
+// Chat endpoints under /api/chat (GET serves UI, POST chats)
+// NOTE: /api/chat is in API_PUBLIC_PATHS above so only X-Access-Token applies.
+app.use("/api", chatRouter);
 
 // -----------------------------
 // 404 for API
