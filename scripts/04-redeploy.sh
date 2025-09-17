@@ -25,23 +25,22 @@ getp() {
 mask(){ sed -E 's/(.{4}).+(.{4})/\1…\2/'; }
 
 echo "=== [REDEPLOY] Fetching secrets from AWS SSM ==="
-# Core IDs (Sheets/Calendar/Scheduler)
+# Core IDs
 export SHEETS_SPREADSHEET_ID="$(getp "/omneuro/google/sheets_spreadsheet_id")"
 export GOOGLE_CALENDAR_ID="$(getp "/omneuro/google/calendar_id")"
 export SCHED_SPREADSHEET_ID="$(getp "/omneuro/google/scheduler_spreadsheet_id")"
 
-# Blog (site + sitemap publishing)
+# Blog
 export BLOG_S3_BUCKET="$(getp "/omneuro/blog/s3_bucket")"
 export BLOG_BASE_URL="$(getp "/omneuro/blog/base_url")"
 export BLOG_AWS_REGION="$(getp "/omneuro/blog/aws_region")"
 export BLOG_SITEMAP_KEY="$(getp "/omneuro/blog/sitemap_key")"
-# NEW: public URL + prefix for canonical links
 export PUBLIC_BLOG_BASE_URL="$(getp "/omneuro/blog/public_blog_base_url")"
 export BLOG_PREFIX="$(getp "/omneuro/blog/prefix")"
 
 # Mailer
-export MAIL_TRANSPORT="$(getp "/omneuro/mail/transport")"           # ses|smtp|log
-export MAIL_FROM="$(getp "/omneuro/mail/from")"                     # 'Juice Junkiez <notifications@...>'
+export MAIL_TRANSPORT="$(getp "/omneuro/mail/transport")"
+export MAIL_FROM="$(getp "/omneuro/mail/from")"
 export MAIL_SES_REGION="$(getp "/omneuro/mail/ses/region")"
 export SMTP_HOST="$(getp "/omneuro/mail/smtp/host")"
 export SMTP_PORT="$(getp "/omneuro/mail/smtp/port")"
@@ -49,8 +48,11 @@ export SMTP_SECURE="$(getp "/omneuro/mail/smtp/secure")"
 export SMTP_USER="$(getp "/omneuro/mail/smtp/user")"
 export SMTP_PASS="$(getp "/omneuro/mail/smtp/pass")"
 
-# Magic-link base (for email links)
+# Tech Portal base
 export PUBLIC_TECH_BASE_URL="$(getp "/omneuro/tech/public_base_url")"
+
+# === NEW: Google Places API key ===
+export GOOGLE_PLACES_API_KEY="$(getp "/omneuro/tech-gateway/GOOGLE_PLACES_API_KEY")"
 
 # Normalize defaults
 [[ -z "${BLOG_SITEMAP_KEY:-}" || "${BLOG_SITEMAP_KEY}" == "None" ]] && BLOG_SITEMAP_KEY="blog/sitemap.xml"
@@ -81,6 +83,7 @@ echo   "[SSM] SMTP_SECURE=${SMTP_SECURE:-<none>}"
 echo   "[SSM] SMTP_USER=${SMTP_USER:-<none>}"
 echo   "[SSM] SMTP_PASS=$( [[ -n "${SMTP_PASS:-}" ]] && echo '********' || echo '<none>' )"
 echo   "[SSM] PUBLIC_TECH_BASE_URL=${PUBLIC_TECH_BASE_URL:-<none>}"
+echo   "[SSM] GOOGLE_PLACES_API_KEY=$( [[ -n "${GOOGLE_PLACES_API_KEY:-}" && "${GOOGLE_PLACES_API_KEY}" != "None" ]] && echo '****…' || echo '<none>' )"
 
 echo "=== [REDEPLOY] Building apps (npm ci + build) ==="
 mkdir -p /home/ubuntu/build-logs
@@ -115,6 +118,7 @@ SMTP_SECURE="${SMTP_SECURE:-}" \
 SMTP_USER="${SMTP_USER:-}" \
 SMTP_PASS="${SMTP_PASS:-}" \
 PUBLIC_TECH_BASE_URL="${PUBLIC_TECH_BASE_URL:-https://tech.juicejunkiez.com}" \
+GOOGLE_PLACES_API_KEY="${GOOGLE_PLACES_API_KEY:-}" \
 pm2 startOrReload ecosystem.config.cjs --only tech-gateway --update-env
 
 pm2 startOrReload ecosystem.config.cjs --only brain-api --update-env
@@ -125,6 +129,7 @@ pm2 jlist | node -e '
 const a=JSON.parse(require("fs").readFileSync(0,"utf8"));
 const p=a.find(x=>x.name==="tech-gateway")||{};
 const e=p.pm2_env?.env||{};
+function mask(v){ if(!v||v=="<unset>") return "<unset>"; return (v+"").slice(0,4)+"…"; }
 console.log({
   SHEETS_SPREADSHEET_ID: e.SHEETS_SPREADSHEET_ID||"<unset>",
   GOOGLE_CALENDAR_ID: e.GOOGLE_CALENDAR_ID||"<unset>",
@@ -140,13 +145,18 @@ console.log({
   MAIL_SES_REGION: e.MAIL_SES_REGION||"<unset>",
   SMTP_HOST: e.SMTP_HOST||"<unset>",
   SMTP_USER: e.SMTP_USER||"<unset>",
-  PUBLIC_TECH_BASE_URL: e.PUBLIC_TECH_BASE_URL||"<unset>"
+  PUBLIC_TECH_BASE_URL: e.PUBLIC_TECH_BASE_URL||"<unset>",
+  GOOGLE_PLACES_API_KEY: mask(e.GOOGLE_PLACES_API_KEY||"<unset>")
 });
 '
 
 echo "=== [REDEPLOY] Publish homepage ==="
 sudo mkdir -p /var/www/juicejunkiez.com
-sudo rsync -av --delete apps/homepage/public/ /var/www/juicejunkiez.com/
+# Do not wipe blog content or sitemap
+sudo rsync -av --delete \
+  --exclude 'blog' \
+  --exclude 'blog-sitemap.xml' \
+  apps/homepage/public/ /var/www/juicejunkiez.com/
 
 echo "=== [REDEPLOY] Publish blog sitemap (best-effort) ==="
 aws s3 cp "s3://${BLOG_S3_BUCKET}/${BLOG_SITEMAP_KEY}" /tmp/blog-sitemap.xml --region "${BLOG_AWS_REGION}" || true
@@ -160,15 +170,19 @@ fi
 
 echo "=== [REDEPLOY] Sync blog content to web root ==="
 sudo mkdir -p /var/www/juicejunkiez.com/blog
-aws s3 sync "s3://${BLOG_S3_BUCKET}/blog" /var/www/juicejunkiez.com/blog \
+sudo aws s3 sync "s3://${BLOG_S3_BUCKET}/blog" /var/www/juicejunkiez.com/blog \
   --region "${BLOG_AWS_REGION}" --delete --exclude "sitemap.xml" || true
 sudo chown -R root:root /var/www/juicejunkiez.com/blog || true
+sudo find /var/www/juicejunkiez.com/blog -type d -exec chmod 755 {} \; || true
+sudo find /var/www/juicejunkiez.com/blog -type f -exec chmod 644 {} \; || true
 
 echo "=== [REDEPLOY] Install/enable blog sync timer (systemd) ==="
 if [[ -f ops/systemd/omneuro-blog-sync.service && -f ops/systemd/omneuro-blog-sync.timer ]]; then
   sudo install -m 0644 ops/systemd/omneuro-blog-sync.service /etc/systemd/system/omneuro-blog-sync.service
   sudo install -m 0644 ops/systemd/omneuro-blog-sync.timer   /etc/systemd/system/omneuro-blog-sync.timer
   sudo systemctl daemon-reload
+  sudo systemctl unmask omneuro-blog-sync.timer || true
+  sudo systemctl unmask omneuro-blog-sync.service || true
   sudo systemctl enable --now omneuro-blog-sync.timer
   sudo systemctl start omneuro-blog-sync.service || true
   echo "[OK] systemd blog sync timer enabled"
