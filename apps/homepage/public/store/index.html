@@ -1,4 +1,4 @@
-<!-- ////apps/homepage/public/store/index.html -->
+<!-- apps/homepage/public/store/index.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,6 +6,11 @@
   <title>Juice Junkiez • Store</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/store/styles.css" />
+  <style>
+    /* small safety styles if stylesheet gets cached weirdly */
+    .hidden{display:none}
+    .error{color:#ff9b9b;font-size:14px;margin-top:8px}
+  </style>
 </head>
 <body>
   <header class="site-header">
@@ -20,10 +25,11 @@
 
   <main class="container">
     <h1>3D Printed Parts</h1>
-    <div id="products" class="grid"></div>
+    <div id="products" class="grid" aria-live="polite"></div>
+    <p id="prodError" class="error hidden">Couldn’t load products. Try again later.</p>
   </main>
 
-  <aside id="cart" class="cart-panel hidden">
+  <aside id="cart" class="cart-panel hidden" aria-label="Shopping cart">
     <div class="cart-head">
       <h3>Your Cart</h3>
       <button id="closeCart" aria-label="Close">×</button>
@@ -36,6 +42,128 @@
     </div>
   </aside>
 
-  <script src="/store/app.js" defer></script>
+  <script>
+    // --- Config: point at tech API explicitly so it works from juicejunkiez.com domain
+    const API_BASE = 'https://tech.juicejunkiez.com/api/store';
+
+    // --- Simple state
+    const cart = new Map(); // id -> { id, name, price, currency, qty }
+    const els = {
+      products: document.getElementById('products'),
+      prodError: document.getElementById('prodError'),
+      cart: document.getElementById('cart'),
+      cartBtn: document.getElementById('cartBtn'),
+      closeCart: document.getElementById('closeCart'),
+      cartItems: document.getElementById('cartItems'),
+      cartTotal: document.getElementById('cartTotal'),
+      cartCount: document.getElementById('cartCount'),
+      checkout: document.getElementById('checkout'),
+      cartMsg: document.getElementById('cartMsg'),
+    };
+
+    function fmtUSD(cents){ return (cents/100).toLocaleString('en-US', { style:'currency', currency:'USD' }); }
+    function openCart(){ els.cart.classList.remove('hidden'); }
+    function closeCart(){ els.cart.classList.add('hidden'); }
+    els.cartBtn.addEventListener('click', openCart);
+    els.closeCart.addEventListener('click', closeCart);
+
+    function renderCart(){
+      let total = 0, count = 0;
+      els.cartItems.innerHTML = '';
+      for (const item of cart.values()){
+        total += (item.price) * item.qty;
+        count += item.qty;
+        const row = document.createElement('div');
+        row.className = 'cart-row';
+        row.innerHTML = `
+          <div class="cart-row-info">
+            <div class="cart-row-name">${item.name}</div>
+            <div class="cart-row-price">${fmtUSD(item.price)}</div>
+          </div>
+          <div class="cart-row-qty">
+            <button class="qminus" aria-label="decrease">-</button>
+            <span class="qv">${item.qty}</span>
+            <button class="qplus" aria-label="increase">+</button>
+            <button class="qremove" aria-label="remove">×</button>
+          </div>
+        `;
+        row.querySelector('.qminus').onclick = () => { item.qty=Math.max(1,item.qty-1); renderCart(); };
+        row.querySelector('.qplus').onclick  = () => { item.qty=item.qty+1; renderCart(); };
+        row.querySelector('.qremove').onclick= () => { cart.delete(item.id); renderCart(); };
+        els.cartItems.appendChild(row);
+      }
+      els.cartTotal.textContent = fmtUSD(total);
+      els.cartCount.textContent = String(count);
+      if (count === 0) closeCart();
+    }
+
+    function addToCart(p){
+      const existing = cart.get(p.id);
+      if (existing) existing.qty += 1;
+      else cart.set(p.id, { id:p.id, name:p.name, price:p.price, currency:p.currency||'usd', qty:1 });
+      renderCart();
+      openCart();
+    }
+
+    async function loadProducts(){
+      try{
+        // health first (optional)
+        fetch(API_BASE + '/health').catch(()=>{});
+        const res = await fetch(API_BASE + '/products', { mode:'cors', credentials:'omit', cache:'no-store' });
+        if (!res.ok) throw new Error('bad_status');
+        const data = await res.json();
+        const items = Array.isArray(data?.products) ? data.products : [];
+        if (!items.length) throw new Error('empty');
+
+        els.products.innerHTML = '';
+        for (const p of items){
+          const card = document.createElement('div');
+          card.className = 'card';
+          const img = document.createElement('img');
+          img.alt = p.name;
+          img.loading = 'lazy';
+          img.src = p.image && typeof p.image === 'string'
+            ? p.image
+            : 'https://juicejunkiez-site-prod.s3.amazonaws.com/images/jj-logo.png';
+          const title = document.createElement('h3'); title.textContent = p.name;
+          const desc  = document.createElement('p');  desc.textContent  = p.description || '';
+          const price = document.createElement('div'); price.className='price'; price.textContent = fmtUSD(p.price);
+          const btn   = document.createElement('button'); btn.className='add-btn'; btn.textContent='Add to Cart';
+          btn.onclick = () => addToCart(p);
+
+          card.appendChild(img);
+          card.appendChild(title);
+          card.appendChild(desc);
+          card.appendChild(price);
+          card.appendChild(btn);
+          els.products.appendChild(card);
+        }
+      } catch(e){
+        els.prodError.classList.remove('hidden');
+      }
+    }
+
+    els.checkout.addEventListener('click', async () => {
+      try {
+        els.cartMsg.textContent = '';
+        const items = Array.from(cart.values()).map(x => ({ id:x.id, quantity:x.qty }));
+        if (!items.length){ els.cartMsg.textContent = 'Cart is empty.'; return; }
+
+        const res = await fetch(API_BASE + '/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items })
+        });
+        if (!res.ok){ els.cartMsg.textContent = 'Checkout failed.'; return; }
+        const data = await res.json();
+        if (data?.url){ window.location.href = data.url; return; }
+        els.cartMsg.textContent = 'Could not start checkout.';
+      } catch(e){
+        els.cartMsg.textContent = 'Network error.';
+      }
+    });
+
+    loadProducts();
+  </script>
 </body>
 </html>

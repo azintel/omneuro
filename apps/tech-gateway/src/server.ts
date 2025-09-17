@@ -1,3 +1,4 @@
+// apps/tech-gateway/src/server.ts
 import techRouter from "./routes/tech.js";
 import garageRouter from "./routes/garage.js";
 import chatRouter from "./routes/chat.js";
@@ -24,19 +25,19 @@ const BASIC_USER = process.env.BASIC_AUTH_USER || "";
 const BASIC_PASS = process.env.BASIC_AUTH_PASS || "";
 const authEnabled = Boolean(BASIC_USER && BASIC_PASS);
 
-// Paths under /api/* that remain public (exact matches)
+// Paths under /api/* that remain public (exact matches of req.path)
 const API_PUBLIC_PATHS = new Set<string>([
   "/health",
   "/tech/health",
   "/garage/health",
   "/scheduler/health",
 
-  // store public endpoints (homepage needs these)
+  // store public endpoints (homepage/store uses these)
   "/store/health",
   "/store/products",
   "/store/checkout",
 
-  // allow public magic-link endpoints for clients
+  // public garage magic-link endpoints
   "/garage/auth/request",
   "/garage/auth/verify",
 ]);
